@@ -1,0 +1,9 @@
+*.log
+*.xcuserstate
+.DS_Store
+.build/
+.vite/
+DerivedData/
+dist/
+node_modules/
+xcuserdata/
