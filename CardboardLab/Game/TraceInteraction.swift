@@ -52,6 +52,8 @@ final class TraceInteraction {
     private var toolRot = Quat.identity
     private var toolPos = V3(0, 0, 0)
     private var lift: Float = 0
+    /// Visual progress is rebuilt at most once per frame (touches arrive up to 240 Hz).
+    private var visualDirty = false
 
     /// Screen tolerance around the line, in points.
     let tolerance: Float = 48
@@ -222,9 +224,13 @@ final class TraceInteraction {
             advancedThisTouch = true
             offSince = nil
             lastProgressTime = engine.time
-            visual.setProgress(tracer.progress)
+            visualDirty = true
             tool.onAdvance?(tracer.head, tracer.tangent, tracer.progress - before)
-            if tracer.isDone { done = true }
+            if tracer.isDone {
+                visual.setProgress(tracer.progress)
+                visualDirty = false
+                done = true
+            }
         case .holding:
             offSince = nil
         case .offPath:
@@ -243,6 +249,10 @@ final class TraceInteraction {
     // MARK: Frame
 
     private func frame(_ dt: Double) {
+        if visualDirty {
+            visual.setProgress(tracer.progress)
+            visualDirty = false
+        }
         let target = tool.pose(tracer.head, tracer.tangent)
         toolRot = toolRot.slerp(target.rot, Float(1 - exp(-14 * dt)))
         toolPos = mix3(toolPos, target.pos, Float(1 - exp(-30 * dt)))

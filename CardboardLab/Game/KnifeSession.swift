@@ -51,7 +51,7 @@ final class KnifeSession: CraftSession {
         try await sheet.printTemplate(pencil: engine.workspace.pencil, tweener: tw)
     }
 
-    // MARK: Steps (interactions are filled in feature by feature)
+    // MARK: Step 1 · Cut
 
     private func stepCut() async throws {
         let order = ["blade", "handle", "guard"]

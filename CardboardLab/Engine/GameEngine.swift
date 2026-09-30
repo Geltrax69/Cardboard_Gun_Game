@@ -234,6 +234,7 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
         particles.clear()
         pointerHandler = nil
         overlay.clearAll()
+        workspace.returnTools(tweener: tweener)
         transitioning = true
         screen = .menu
         Task { @MainActor in

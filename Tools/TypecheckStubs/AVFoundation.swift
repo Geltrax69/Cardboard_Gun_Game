@@ -36,6 +36,7 @@ open class AVAudioPlayerNode: AVAudioNode {
 open class AVAudioEngine: NSObject {
     public override init() {}
     open var mainMixerNode: AVAudioMixerNode { AVAudioMixerNode() }
+    open var isRunning: Bool { false }
     open func attach(_ node: AVAudioNode) {}
     open func connect(_ node1: AVAudioNode, to node2: AVAudioNode, format: AVAudioFormat?) {}
     open func start() throws {}

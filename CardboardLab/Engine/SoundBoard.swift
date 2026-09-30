@@ -49,8 +49,11 @@ final class SoundBoard {
         guard isEnabled(), let buffer = buffers[s], !players.isEmpty else { return }
         if minInterval > 0, let last = lastPlayed[s], now - last < minInterval { return }
         lastPlayed[s] = now
+        // Interruptions (calls, Siri, route changes) stop the engine; playing a node on a
+        // stopped engine raises an exception, so restart first.
+        if !engine.isRunning { started = false }
         ensureStarted()
-        guard started else { return }
+        guard started, engine.isRunning else { return }
         let p = players[nextPlayer]
         nextPlayer = (nextPlayer + 1) % players.count
         p.stop()

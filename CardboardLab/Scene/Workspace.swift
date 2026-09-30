@@ -18,6 +18,7 @@ final class Workspace {
 
     /// Resting transforms of the tools that get picked up during crafting.
     let knifeRest = Pose(rot: Quat.euler(yaw: -0.95, pitch: 0, roll: 0.12), pos: V3(11.6, 0.32, 6.3))
+    let pencilRest = Pose(rot: Quat(axis: V3(0, 1, 0), angle: 0.62), pos: V3(-11.9, 0.2, 1.4))
     let folderRest = Pose(rot: Quat(axis: V3(0, 1, 0), angle: -0.35), pos: V3(-12.4, 0.02, 5.6))
     let glueRest = Pose(rot: Quat(axis: V3(1, 0, 0), angle: .pi / 2), pos: V3(11.5, 0.65, 0.4))
 
@@ -57,6 +58,16 @@ final class Workspace {
         scene.rootNode.addChildNode(sunNode)
     }
 
+    /// Puts every hand tool back in its resting spot (after a craft is abandoned).
+    @MainActor
+    func returnTools(tweener: Tweener) {
+        for (node, rest) in [(knife, knifeRest), (glue, glueRest), (boneFolder, folderRest), (pencil, pencilRest)] {
+            let from = node.pose
+            if from.pos.dist(rest.pos) < 0.01 { continue }
+            tweener.start(0.6, ease: .inOutCubic) { k in node.setPose(from.lerp(rest, k)) }
+        }
+    }
+
     private func buildTableAndMat() {
         let table = SceneBridge.node(MeshBuilder.box(V3(220, 2, 220), center: V3(0, -matThickness - 1, 0)), [Mat.lambert(Palette.table)])
         table.name = "table"
@@ -78,7 +89,7 @@ final class Workspace {
         ruler.setPose(Pose(rot: Quat(axis: V3(0, 1, 0), angle: 0.95), pos: V3(-12.2, 0, -7.4)))
         root.addChildNode(ruler)
 
-        pencil.setPose(Pose(rot: Quat(axis: V3(0, 1, 0), angle: 0.62), pos: V3(-11.9, 0.2, 1.4)))
+        pencil.setPose(pencilRest)
         root.addChildNode(pencil)
 
         tape.setPose(Pose(pos: V3(12.4, 0, -6.8)))
