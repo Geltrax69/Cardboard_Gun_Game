@@ -7,7 +7,6 @@ struct MenuView: View {
     @EnvironmentObject var profile: PlayerProfile
     @EnvironmentObject var icons: IconFactory
     @Binding var showSettings: Bool
-    @Binding var showGuide: Bool
 
     var body: some View {
         GeometryReader { geo in
@@ -34,9 +33,24 @@ struct MenuView: View {
 
                 // Right column: craft projects.
                 VStack(alignment: .leading, spacing: 12 * s) {
-                    Text("Craft Projects")
-                        .font(LabFont.heavy(24 * s))
-                        .foregroundStyle(Color.labPaper)
+                    HStack {
+                        Text("Craft Projects")
+                            .font(LabFont.heavy(24 * s))
+                            .foregroundStyle(Color.labPaper)
+                        Spacer()
+                        Button {
+                            engine.showGuide(startsCraft: false)
+                        } label: {
+                            HStack(spacing: 5 * s) {
+                                Image(systemName: "book.fill").font(.system(size: 13 * s, weight: .bold))
+                                Text("How to build").font(LabFont.heavy(13 * s))
+                            }
+                            .foregroundStyle(Color.labInk)
+                            .padding(.horizontal, 10 * s).padding(.vertical, 6 * s)
+                            .background(Capsule().fill(Color.labBlue))
+                        }
+                        .buttonStyle(PressableStyle())
+                    }
                     ForEach(ProjectInfo.all) { project in
                         ProjectCard(project: project, scale: s)
                     }
@@ -122,7 +136,7 @@ private struct ProjectCard: View {
         let playable = project.kind == .playable
         Button {
             switch project.kind {
-            case .playable: engine.startProject(project)
+            case .playable: engine.openProject(project)
             case .locked(let requirement):
                 if let dep = project.unlockedBy, profile.timesCompleted(dep) > 0 {
                     engine.toast("\(project.name) blueprint is coming soon!", .info, life: 2)

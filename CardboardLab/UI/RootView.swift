@@ -3,7 +3,6 @@ import SwiftUI
 struct RootView: View {
     @EnvironmentObject var engine: GameEngine
     @State private var showSettings = false
-    @State private var showGuide = false
 
     var body: some View {
         GeometryReader { geo in
@@ -13,7 +12,7 @@ struct RootView: View {
                     .ignoresSafeArea()
 
                 if engine.screen == .menu && !engine.transitioning {
-                    MenuView(showSettings: $showSettings, showGuide: $showGuide)
+                    MenuView(showSettings: $showSettings)
                         .transition(.opacity)
                 }
 
@@ -24,14 +23,20 @@ struct RootView: View {
 
                 ToastLayer(scale: s, defaultY: geo.size.height * 0.34)
 
+                if engine.guideVisible {
+                    GuideView(scale: s)
+                        .transition(.opacity)
+                }
+
                 if showSettings {
-                    SettingsPanel(isPresented: $showSettings) { showGuide = true }
+                    SettingsPanel(isPresented: $showSettings) { engine.showGuide(startsCraft: false) }
                         .transition(.opacity)
                 }
             }
             .animation(.easeInOut(duration: 0.35), value: engine.screen)
             .animation(.easeInOut(duration: 0.35), value: engine.transitioning)
             .animation(.easeInOut(duration: 0.25), value: showSettings)
+            .animation(.easeInOut(duration: 0.3), value: engine.guideVisible)
         }
         .onAppear { engine.start() }
     }

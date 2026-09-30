@@ -19,7 +19,7 @@ enum HUDTool: String {
         switch self {
         case .knife: return "tool.knife"
         case .glue: return "tool.glue"
-        case .scorer: return "tool.ruler"
+        case .scorer: return "tool.folder"
         case .hand, .none: return nil
         }
     }

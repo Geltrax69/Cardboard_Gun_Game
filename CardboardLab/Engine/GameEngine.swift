@@ -53,6 +53,10 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
     @Published private(set) var toasts: [Toast] = []
     @Published var selectedTool: String = "knife"
     @Published private(set) var transitioning = false
+    /// "How to build" guide overlay.
+    @Published private(set) var guideVisible = false
+    /// Whether closing the guide with "Start crafting" launches the knife.
+    @Published private(set) var guideStartsCraft = false
     private var sessionTask: Task<Void, Never>?
     /// Bumped whenever a session starts or is abandoned, so a cancelled session's
     /// unwinding can't clobber the state of whatever replaced it.
@@ -243,6 +247,30 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
                 self?.menu.root.opacity = CGFloat(k)
             }
             for n in fadeOut { n.removeFromParentNode() }
+        }
+    }
+
+    // MARK: Guide
+
+    func showGuide(startsCraft: Bool) {
+        icons.renderGuide(stock: profile.stock)
+        guideStartsCraft = startsCraft
+        guideVisible = true
+        sound.play(.tap)
+    }
+
+    func closeGuide(start: Bool) {
+        guideVisible = false
+        profile.markGuideSeen()
+        if start && guideStartsCraft { startProject(.knife) }
+    }
+
+    /// First knife ever: show the guide before crafting.
+    func openProject(_ project: ProjectInfo) {
+        if project.id == ProjectInfo.knife.id && !profile.seenGuide {
+            showGuide(startsCraft: true)
+        } else {
+            startProject(project)
         }
     }
 

@@ -2,7 +2,8 @@
 
 A tactile, low-poly 3D **iPad** crafting game written in **Swift** (SwiftUI + SceneKit).
 Cut cardboard along red lines, score and fold along blue dashed lines, glue tabs and
-assemble real 3D cardboard objects, starting with a **cardboard knife**.
+assemble real 3D cardboard objects. The first project is a **cardboard knife**; more
+weapons (pistol, rifle) are on the menu as upcoming blueprints.
 
 > CUT → SCORE/FOLD → GLUE → ALIGN → FOLD → ASSEMBLE → FINISHED
 
@@ -21,23 +22,120 @@ assemble real 3D cardboard objects, starting with a **cardboard knife**.
 Every Swift file under `CardboardLab/` is part of the app target automatically. New
 files you add there are compiled with no project edits.
 
+## How to play
+
+| Action | Gesture |
+|---|---|
+| **Cut** (red solid line) | Swipe along the glowing red line; the craft knife follows your finger or Apple Pencil. Lift and continue any time. |
+| **Score** (blue dashed line) | Swipe the bone folder along the dashed line (either direction). |
+| **Fold** | Drag the highlighted flap along the curved blue arrow. Past ~70% it snaps: *Perfect fold*. |
+| **Glue** | Drag the glue bottle along the dotted blue guide on the tab. |
+| **Align / connect** | Drag the piece onto its glowing mint outline; it snaps into place: *Tab aligned*. |
+
+There are no timers, lives or score loss. Straying off a line only shows *Try following
+the highlighted line*. A ghost finger demonstrates each gesture the first time and
+again if you pause. You can turn hints off in Settings.
+
+### The knife, step by step
+
+| Step | What happens |
+|---|---|
+| 1 · Cut | The pencil traces the template. Cut out the blade, handle and guard band, and punch the two lanyard holes. Each freed piece lifts out (+100 CRAFT), then the leftover board slides away. |
+| 2 · Score & fold | Score the five handle creases, then the camera tilts to 3/4 and you fold the walls, end cap and glue tab up. |
+| 3 · Glue | Lay a glue bead along the tucked-in tab. |
+| 4 · Align | Fold the lid onto the glued tab (highlighted mint) until it snaps. |
+| 5 · Fold | Score the blade spine, pinch the ridge, glue the tang. |
+| 6 · Assemble | Slide the blade into the handle, glue and drop the guard band on, and it wraps itself round. The finished knife pops up with confetti. |
+
+The **How to build the Knife** guide (menu → *How to build*, the **?** button while
+crafting, or Settings) shows all eight stages rendered from the real 3D pieces.
+
 ## Project layout
 
 ```
 CardboardLab/
   App/        App entry point
-  Core/       Platform-free game logic (math, triangulation, fold kinematics,
-              templates, cut tracing, tweening). Unit tested on any OS.
-  Scene/      SceneKit building blocks: palette, materials, textures, low-poly props,
-              the workspace (table, cutting mat, lights)
-  Engine/     Game loop, camera rig, touch input, guide overlay
-  UI/         SwiftUI screens and HUD
-Tools/        Test harness, preview renderer, type-check stubs, icon generator
+  Core/       Platform-free logic, unit tested on any OS:
+                Vec (vectors, quaternions, poses) · Earcut (triangulation with holes)
+                Polygon/Polyline · Template (pieces, panels, hinges, union outlines)
+                FoldRig (fold kinematics) · MeshBuilder (flat-shaded meshes)
+                PathTracer (finger → tool along a path) · CameraMath · Tweener
+                KnifeBlueprint · Stock
+  Scene/      SceneKit building blocks: palette, materials, procedural textures,
+              low-poly props, workspace, menu stacks, PieceNode, TemplateSheet,
+              cut/score/glue visuals, particles, icon & guide renderer
+  Engine/     GameEngine (loop, input, screens), CameraRig, HUD model, SoundBoard,
+              guide overlay (arrows, dotted guides, ghost finger)
+  Game/       Crafting sessions and interactions: CraftSession, KnifeSession,
+              TraceInteraction (cut/score/glue), FoldInteraction, PlaceInteraction,
+              GhostHint, PlayerProfile, Catalog
+  UI/         SwiftUI: menu, crafting HUD, guide, components
+Tools/        Core tests, preview renderer, API stubs for type-checking, icon generator
 ```
+
+### How a craft runs
+
+A project is a `CraftSession` subclass written as straight-line async code:
+
+```swift
+step(2, "Fold the walls up", "Drag each flap up along the blue arrow.", tool: .hand)
+try await look(at: handleCenter(), size: V2(8, 6.5), shot: .threeQuarter)
+try await foldPanel(handle, "HS1", grab: farEdge, first: true)
+try await waitForNext()
+```
+
+Each `await` goes through the engine's `Tweener`, which the display link drives. Tapping
+Home cancels every pending await, so the script unwinds cleanly.
+
+## Adding your own cuts (templates)
+
+A template is a sheet with one or more **pieces**. A piece is a tree of **panels**
+joined by **hinges**. You describe panels and hinges; the red cut outline, ink edges,
+blue fold lines, triangulation and folding are all derived automatically.
+
+Coordinates are template space `(u, v)` = world `(x, z)` on the mat, with `+v` toward the
+player (down on screen). A panel's printed face is up.
+
+```swift
+let t: Float = 0.14                          // board thickness (from the stock)
+let base = PanelDef("BASE", Poly.rect(0, -1, 4, 1))            // root: no parent
+let wall = PanelDef("WALL", Poly.rect(0, -2, 4, -1),
+                    parent: "BASE",
+                    hinge: HingeDef(V2(0, -1), V2(4, -1)))       // valley fold, 90°
+let tab  = PanelDef("TAB", [V2(0.1, 1), V2(3.9, 1), V2(3.6, 1.4), V2(0.4, 1.4)],
+                    parent: "BASE",
+                    hinge: HingeDef(V2(0.1, 1), V2(3.9, 1), .mountain, degrees: 90),
+                    role: .glueTab)
+let piece = PieceDef(id: "box", name: "Box", placement: V2(-2, 0), panels: [base, wall, tab])
+let template = CraftTemplate(sheetSize: V2(15.2, 10), thickness: t, pieces: [piece])
+```
+
+Rules of thumb:
+
+- **Valley** folds hinge about the printed face (the flap rises toward you). **Mountain**
+  folds hinge about the underside. Because the board has real thickness, size
+  neighbouring panels with `t` in mind. `KnifeBlueprint` shows how a lid is `W + t` wide
+  so it covers the wall, and how a tucked tab's wall is `H − t` tall so the lid sits flush.
+- Holes go in `PanelDef(holes:)`. They are cut as small red circles and punch out.
+- The piece outline is computed as the union of its panels. Panels must share edges
+  exactly along hinges.
+- Check a template before it ever reaches the iPad:
+  `Tools/run-core-tests.sh`, then render a preview of any fold state with
+  `python3 Tools/render_preview.py .build/core-tests/knife.json knife.png --pitch 40 --yaw 35`.
+
+### Adding a new project (for example the pistol)
+
+1. Write a blueprint in `Core/` (like `KnifeBlueprint`): pieces, fold targets,
+   assembly poses and glue paths. Add checks to `Tools/CoreTests/main.swift`.
+2. Write a session in `Game/` (like `KnifeSession`) using the ready-made interactions:
+   `TraceInteraction.cut/score/glue`, `FoldInteraction`, `PlaceInteraction`.
+3. Mark it `.playable` in `Game/Catalog.swift` and add it to the switch in
+   `GameEngine.runSession`.
 
 ## Style
 
-Low-poly, flat-shaded geometry with chunky ink outlines and hard-edged shadows. All
+Low-poly, flat-shaded geometry with chunky ink outlines and hard-edged shadows. The
+camera is near top-down for cutting and planning and moves to 3/4 for folding. All
 colors come from `Scene/Palette.swift`:
 
 | Token | Hex | Use |
@@ -46,15 +144,18 @@ colors come from `Scene/Palette.swift`:
 | mat | `#0E6762` | cutting mat |
 | cardboard | `#E2A652` | cardboard |
 | cardboardLight | `#F3C274` | highlights |
-| cardboardDark | `#B17330` | cardboard edges |
-| ink | `#0D2730` | outlines, text |
+| cardboardDark | `#B17330` | cardboard edges, creases |
+| ink | `#0D2730` | outlines, panels, text |
 | red | `#F46359` | **cut** lines, primary actions |
-| blue | `#67C2E2` | **fold** lines, fold arrows |
-| mint | `#97E1BE` | success / completed |
-| yellow | `#FADC70` | tools |
-| paper | `#F8F7EF` | UI surfaces |
+| blue | `#67C2E2` | **fold** lines, fold arrows, guides |
+| mint | `#97E1BE` | success, matching surfaces |
+| yellow | `#FADC70` | tools, selection |
+| paper | `#F8F7EF` | UI text and surfaces |
 
-**RED SOLID = CUT. BLUE DASHED = FOLD.** These two line types never share a style.
+**RED SOLID = CUT. BLUE DASHED = FOLD.** The two line types never share a style.
+
+Sound effects are synthesised at launch (`Engine/SoundBoard.swift`), so the game ships
+with no audio assets.
 
 ## Developing without a Mac
 
@@ -65,8 +166,9 @@ Tools/run-core-tests.sh            # compile + run the core test-suite (swiftc)
 Tools/check-syntax.sh              # parse every Swift file
 Tools/typecheck.sh                 # type-check the whole app against API stubs
 python3 Tools/render_preview.py .build/core-tests/knife.json knife.png --pitch 40 --yaw 35
+python3 Tools/make_icon.py CardboardLab/Assets.xcassets/AppIcon.appiconset/AppIcon.png
 ```
 
-`Tools/typecheck.sh` uses small stand-ins for SceneKit/UIKit/SwiftUI
+`Tools/typecheck.sh` uses small stand-ins for SceneKit, UIKit, SwiftUI and AVFoundation
 (`Tools/TypecheckStubs`) to catch type and actor-isolation errors on Linux. Xcode is
 still the source of truth.

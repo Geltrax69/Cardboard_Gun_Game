@@ -19,6 +19,8 @@ struct CraftHUDView: View {
                 ZStack(alignment: .top) {
                     HStack(alignment: .top) {
                         HomeButton(size: 64 * s) { engine.goToMenu() }
+                        RoundIconButton(systemName: "questionmark", size: 50 * s) { engine.showGuide(startsCraft: false) }
+                            .padding(.top, 7 * s)
                         Spacer()
                         craftBadge(s)
                     }
