@@ -34,6 +34,16 @@ enum HUDTool: String {
     }
 }
 
+/// Shown on the completion card.
+struct FinishInfo: Equatable {
+    var title: String
+    var subtitle: String
+    var reward: Int
+    var seconds: Int
+    var perfectFolds: Int
+    var iconKey: String
+}
+
 /// State of the crafting HUD. Sessions write it; SwiftUI renders it.
 @MainActor
 final class HUDModel: ObservableObject {
@@ -47,6 +57,7 @@ final class HUDModel: ObservableObject {
     @Published var nextTitle = "Next"
     /// e.g. "Blade · 1 of 3".
     @Published var detail: String?
+    @Published var finish: FinishInfo?
     /// Bumps whenever the title changes so SwiftUI can animate it.
     @Published private(set) var titleID = 0
 
@@ -73,6 +84,17 @@ final class HUDModel: ObservableObject {
         nextTapped = true
     }
 
+    /// Clears a handled tap so the next wait starts fresh.
+    func consumeTap() {
+        nextTapped = false
+    }
+
+    /// Ends the current wait regardless of the Next pill (completion card buttons).
+    func complete() {
+        nextVisible = false
+        nextTapped = true
+    }
+
     func reset(steps: Int) {
         stepIndex = 1
         stepCount = steps
@@ -81,5 +103,7 @@ final class HUDModel: ObservableObject {
         detail = nil
         nextVisible = false
         nextTapped = false
+        finish = nil
+        showLegend = true
     }
 }

@@ -12,6 +12,16 @@ import UIKit
 final class KnifeSession: CraftSession {
     let bp: KnifeBlueprint
     private(set) var sheet: TemplateSheet!
+    private var startTime: Double = 0
+    private var startCoins = 0
+    private var perfectFolds = 0
+    /// Finished-knife nodes: `knifeRoot` sits at the knife's centre (spins in place),
+    /// `assembly` holds the pieces in handle space.
+    private let knifeRoot = SCNNode()
+    private let assembly = SCNNode()
+    /// Knife centre in handle space.
+    private let knifeCentre = V3(-0.93, 0.64, 0)
+    private var spinID: Int?
 
     init(engine: GameEngine, stock: CardboardStock) {
         bp = KnifeBlueprint(thickness: stock.thickness)
@@ -20,6 +30,8 @@ final class KnifeSession: CraftSession {
 
     override func run() async throws {
         hud.reset(steps: project.steps)
+        startTime = engine.time
+        startCoins = engine.profile.coins
         try await placeTemplate()
         try await stepCut()
         try await stepFoldHandle()
@@ -213,6 +225,7 @@ final class KnifeSession: CraftSession {
         piece.highlight(panel, color: nil)
         piece.setCrease(panel, 1)
         piece.setFoldLine(panel, visible: false)
+        perfectFolds += 1
         success(successText, at: spec.handle(1) + V3(0, 0.7, 0))
     }
 
@@ -314,6 +327,7 @@ final class KnifeSession: CraftSession {
         blade.highlight("BU", color: nil)
         blade.highlight("BL", color: nil)
         blade.setFoldLine("BL", visible: false)
+        perfectFolds += 1
         success("Perfect fold", at: spot.apply(mid) + V3(0, 1.2, 0))
 
         step(5, "Glue the tang", "Run the glue along the narrow end of the blade.", tool: .glue)
@@ -323,8 +337,138 @@ final class KnifeSession: CraftSession {
         try await waitForNext()
     }
 
+    // MARK: Assembly
+
+    override func cleanup() {
+        engine.removeFrameHandler(spinID)
+        spinID = nil
+    }
+
     private func stepAssemble() async throws {
-        step(6, "Assemble the knife", "Slide the blade in and wrap the guard band.", tool: .hand)
-        try await waitForNext("Finish")
+        guard let handle, let blade, let band = sheet.pieces["guard"] else { return }
+        let t = stock.thickness
+
+        // 1. Blade into the handle.
+        step(6, "Slide the blade in", "Drag the blade onto the glowing outline.", tool: .hand, detail: "Connect · 1 of 2")
+        let hw = handle.pose
+        let ready = hw * bp.bladeReady
+        let seated = hw * bp.bladeSeated
+        glide(to: hw.apply(V3(-1.8, 0.3, -1.6)), size: V2(15, 8.5), shot: .threeQuarter, duration: 1.0)
+        let bladeGhost = blade.makeGhost(color: Palette.mint)
+        bladeGhost.setPose(ready)
+        engine.craftRoot.addChildNode(bladeGhost)
+        let pulse = engine.onFrame { [weak self] _ in
+            guard let self else { return }
+            bladeGhost.opacity = CGFloat(0.65 + 0.35 * sin(self.engine.time * 4))
+        }
+        let bladeSpec = PlaceInteraction.Spec(
+            current: { blade.pose },
+            set: { blade.pose = $0 },
+            target: ready,
+            hoverY: ready.pos.y + 1.1,
+            outline: { blade.footprint() },
+            center: { blade.pose.apply(V3(-1.5, t, 0)) }
+        )
+        try await PlaceInteraction(session: self, spec: bladeSpec, showHint: hintsOn).run()
+        engine.removeFrameHandler(pulse)
+        bladeGhost.removeFromParentNode()
+        try await tw.tween(0.5, ease: .inOutCubic) { k in blade.pose = ready.lerp(seated, k) }
+        rig.addShake(0.15)
+        flashSeam([hw.apply(V3(0.02, t, -bp.W / 2)), hw.apply(V3(0.02, bp.H + t, -bp.W / 2)),
+                   hw.apply(V3(0.02, bp.H + t, bp.W / 2)), hw.apply(V3(0.02, t, bp.W / 2))])
+        success("Tab aligned", at: hw.apply(V3(0, 1.6, 0)))
+        reward(50, at: hw.apply(V3(0, 2.2, 0)))
+
+        // 2. Pick the knife up so the band can wrap underneath.
+        say("Blade locked in!", "Lift the knife — the guard band goes around the front.", tool: .hand, detail: nil)
+        knifeRoot.name = "finishedKnife"
+        assembly.name = "assembly"
+        knifeRoot.setPose(hw * .translation(knifeCentre))
+        assembly.setPose(.translation(knifeCentre * -1))
+        knifeRoot.addChildNode(assembly)
+        engine.craftRoot.addChildNode(knifeRoot)
+        assembly.addChildNode(handle.root)
+        handle.pose = .identity
+        assembly.addChildNode(blade.root)
+        blade.pose = bp.bladeSeated
+        let ground = knifeRoot.pose
+        let held = Pose(rot: ground.rot, pos: ground.pos + V3(0, 1.9, 0))
+        try await tw.tween(0.7, ease: .outBack) { [knifeRoot] k in knifeRoot.setPose(ground.lerp(held, k)) }
+
+        // 3. Glue the band.
+        step(6, "Glue the guard band", "Glue the end of the band where it will overlap.", tool: .glue, detail: "Connect · 2 of 2")
+        glide(to: band.pose.apply(V3(3.1, 0, 0.4)), size: V2(9, 5), shot: .threeQuarter, duration: 0.9)
+        try await applyGlue(on: band, panel: "C0", path: bp.guardGluePath, normal: V3(0, 1, 0), first: false)
+
+        // 4. Drop the band across the handle; it wraps itself around.
+        step(6, "Wrap the guard band", "Drag the band onto the front of the handle.", tool: .hand, detail: "Connect · 2 of 2")
+        let knifeWorld = held * .translation(knifeCentre * -1)
+        let bandTarget = knifeWorld * bp.guardOnHandle
+        glide(to: mix3(band.pose.pos, bandTarget.pos, 0.5), size: V2(13, 8), shot: .threeQuarter, duration: 1.0)
+        let bandGhost = band.makeGhost(color: Palette.mint)
+        bandGhost.setPose(bandTarget)
+        engine.craftRoot.addChildNode(bandGhost)
+        let bandSpec = PlaceInteraction.Spec(
+            current: { band.pose },
+            set: { band.pose = $0 },
+            target: bandTarget,
+            hoverY: bandTarget.pos.y + 0.8,
+            outline: { band.footprint() },
+            center: { band.pose.apply(V3(3.1, t, 0.4)) },
+            carryRotation: bandTarget.rot
+        )
+        try await PlaceInteraction(session: self, spec: bandSpec, showHint: hintsOn).run()
+        bandGhost.removeFromParentNode()
+        glide(to: held.pos, size: V2(9, 6), shot: .threeQuarter, duration: 0.8)
+        for id in ["C1", "C2", "C3", "C4"] {
+            try await tw.tween(0.24, ease: .inOutCubic) { k in band.setFold(id, progress: k) }
+            if let h = band.def.panel(id)?.hinge {
+                engine.particles.sparks(at: band.world(id, h.midpoint.onMat(0)), count: 5)
+            }
+        }
+        assembly.addChildNode(band.root)
+        band.pose = bp.guardOnHandle
+        flashSeam([knifeWorld.apply(V3(bp.bandInset, bp.H + 3 * t, -bp.W / 2)),
+                   knifeWorld.apply(V3(bp.bandInset + bp.bandWidth, bp.H + 3 * t, -bp.W / 2))])
+        rig.addShake(0.12)
+        success("Tab aligned", at: held.pos + V3(0, 1.3, 0))
+        reward(50, at: held.pos + V3(0, 2.0, 0))
+
+        try await finale()
+    }
+
+    // MARK: Finale
+
+    private func finale() async throws {
+        step(6, "Finished!", "Your cardboard knife is ready.", tool: .none)
+        hud.showLegend = false
+        let start = knifeRoot.pose
+        let top = Pose(rot: start.rot, pos: start.pos + V3(0, 1.3, 0))
+        rig.glide(to: rig.framing(center: top.pos, size: V2(12.5, 6), view: .hero), duration: 1.2, tweener: tw)
+        try await tw.tween(0.55, ease: .outBack) { [knifeRoot] k in knifeRoot.setPose(start.lerp(top, k)) }
+        engine.particles.confetti(at: top.pos + V3(0, 0.5, 0), count: 90)
+        rig.addShake(0.22)
+        reward(project.reward, at: top.pos + V3(0, 1.8, 0))
+        engine.profile.recordCompletion(project.id)
+
+        // Slow turntable spin with a gentle bob.
+        var angle: Float = 0
+        spinID = engine.onFrame { [weak self] dt in
+            guard let self else { return }
+            angle += Float(dt) * 0.7
+            let bob = V3(0, 0.12 * Float(sin(self.engine.time * 2)), 0)
+            self.knifeRoot.setPose(Pose(rot: Quat(axis: up3, angle: angle) * top.rot, pos: top.pos + bob))
+        }
+        try await tw.wait(0.8)
+        hud.finish = FinishInfo(title: "Knife crafted!",
+                                subtitle: "Cut · Scored · Folded · Glued · Assembled",
+                                reward: engine.profile.coins - startCoins,
+                                seconds: Int(engine.time - startTime),
+                                perfectFolds: perfectFolds,
+                                iconKey: "project.knife")
+        let model = hud
+        hud.consumeTap()
+        try await tw.until { model.nextTapped }
+        hud.consumeTap()
     }
 }

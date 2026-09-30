@@ -123,7 +123,12 @@ private struct ProjectCard: View {
         Button {
             switch project.kind {
             case .playable: engine.startProject(project)
-            case .locked(let requirement): engine.toast(requirement, .hint, life: 2)
+            case .locked(let requirement):
+                if let dep = project.unlockedBy, profile.timesCompleted(dep) > 0 {
+                    engine.toast("\(project.name) blueprint is coming soon!", .info, life: 2)
+                } else {
+                    engine.toast(requirement, .hint, life: 2)
+                }
             case .comingSoon: engine.toast("More crafts are on the way!", .info)
             }
         } label: {
@@ -166,7 +171,9 @@ private struct ProjectCard: View {
         case .playable:
             let done = profile.timesCompleted(project.id)
             return done > 0 ? "Crafted ×\(done) · \(project.steps) steps" : "Step \(max(1, profile.progress(of: project.id))) / \(project.steps)"
-        case .locked: return "Step 0 / \(project.steps)"
+        case .locked:
+            if let dep = project.unlockedBy, profile.timesCompleted(dep) > 0 { return "Blueprint coming soon" }
+            return "Step 0 / \(project.steps)"
         case .comingSoon: return "Coming Soon"
         }
     }

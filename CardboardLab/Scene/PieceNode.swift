@@ -141,6 +141,29 @@ final class PieceNode {
         }
     }
 
+    /// Translucent copy of the piece in its current fold state (target outlines).
+    func makeGhost(color: UIColor, opacity: CGFloat = 0.38) -> SCNNode {
+        let ghost = SCNNode()
+        ghost.name = "ghost-\(def.id)"
+        let mat = Mat.unlit(color, opacity: opacity, depthWrite: false)
+        let poses = rig.poses()
+        for p in def.panels {
+            guard let mesh = bodyMeshes[p.id] else { continue }
+            let n = SceneBridge.node(mesh, [mat, mat, mat])
+            n.castsShadow = false
+            n.setPose(poses[p.id] ?? .identity)
+            ghost.addChildNode(n)
+        }
+        ghost.renderingOrder = 30
+        return ghost
+    }
+
+    /// World outline of the piece's flat footprint under its current root pose.
+    func footprint() -> [V3] {
+        let t = stock.thickness
+        return def.outline.map { pose.apply($0.onMat(t)) }
+    }
+
     func setCastsShadow(_ on: Bool) {
         for n in panelNodes.values { n.castsShadow = on }
     }

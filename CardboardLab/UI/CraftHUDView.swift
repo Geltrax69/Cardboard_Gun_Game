@@ -55,6 +55,13 @@ struct CraftHUDView: View {
 
                 Spacer()
 
+                if let info = hud.finish {
+                    FinishCard(info: info, scale: s)
+                        .padding(.horizontal, 22 * s)
+                        .padding(.bottom, 18 * s)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
                 // Bottom bar.
                 ZStack(alignment: .bottom) {
                     HStack(alignment: .bottom) {
@@ -75,6 +82,7 @@ struct CraftHUDView: View {
             }
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.75), value: hud.nextVisible)
+        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: hud.finish)
         .animation(.easeOut(duration: 0.3), value: hud.titleID)
     }
 
@@ -174,5 +182,79 @@ struct NextButton: View {
         .onAppear {
             withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) { pulse = true }
         }
+    }
+}
+
+/// "Knife crafted!" card shown over the spinning finished object.
+struct FinishCard: View {
+    @EnvironmentObject var engine: GameEngine
+    @EnvironmentObject var hud: HUDModel
+    @EnvironmentObject var icons: IconFactory
+    let info: FinishInfo
+    let scale: CGFloat
+
+    var body: some View {
+        let s = scale
+        HStack(spacing: 22 * s) {
+            if let img = icons.image(info.iconKey) {
+                Image(uiImage: img)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .frame(width: 120 * s, height: 120 * s)
+                    .clipShape(RoundedRectangle(cornerRadius: 18 * s, style: .continuous))
+            }
+            VStack(alignment: .leading, spacing: 8 * s) {
+                OutlinedText(text: info.title, font: LabFont.black(34 * s), fill: .labMint, width: 2.5 * s, depth: 3 * s)
+                Text(info.subtitle)
+                    .font(LabFont.semibold(15 * s))
+                    .foregroundStyle(Color.labPaper.opacity(0.8))
+                HStack(spacing: 14 * s) {
+                    stat(icon: nil, value: "+\(info.reward)", label: "CRAFT", s)
+                    stat(icon: "timer", value: timeText, label: "time", s)
+                    stat(icon: "checkmark.seal.fill", value: "\(info.perfectFolds)", label: "perfect folds", s)
+                }
+            }
+            Spacer(minLength: 10 * s)
+            VStack(spacing: 12 * s) {
+                Button {
+                    hud.finish = nil
+                    engine.craftAgain(.knife)
+                } label: {
+                    Label("Craft again", systemImage: "arrow.counterclockwise")
+                }
+                .buttonStyle(SettingsButtonStyle(fill: .labMint))
+                Button {
+                    hud.finish = nil
+                    hud.complete()
+                } label: {
+                    Label("Home", systemImage: "house.fill")
+                }
+                .buttonStyle(SettingsButtonStyle(fill: .labRed))
+            }
+            .frame(width: 210 * s)
+        }
+        .padding(22 * s)
+        .background(RoundedRectangle(cornerRadius: 28 * s, style: .continuous).fill(Color.labInk.opacity(0.94)))
+        .overlay(RoundedRectangle(cornerRadius: 28 * s, style: .continuous).stroke(Color.labMint, lineWidth: 3))
+        .frame(maxWidth: 860 * s)
+    }
+
+    private var timeText: String {
+        String(format: "%d:%02d", info.seconds / 60, info.seconds % 60)
+    }
+
+    private func stat(icon: String?, value: String, label: String, _ s: CGFloat) -> some View {
+        HStack(spacing: 6 * s) {
+            if let icon {
+                Image(systemName: icon).font(.system(size: 16 * s, weight: .bold)).foregroundStyle(Color.labBlue)
+            } else {
+                CoinIcon(size: 22 * s)
+            }
+            Text(value).font(LabFont.heavy(20 * s)).foregroundStyle(Color.labPaper)
+            Text(label).font(LabFont.semibold(13 * s)).foregroundStyle(Color.labPaper.opacity(0.65))
+        }
+        .padding(.horizontal, 10 * s).padding(.vertical, 6 * s)
+        .background(Capsule().fill(Color.labMat.opacity(0.6)))
     }
 }

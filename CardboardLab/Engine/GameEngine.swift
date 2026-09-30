@@ -53,6 +53,9 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
     @Published var selectedTool: String = "knife"
     @Published private(set) var transitioning = false
     private var sessionTask: Task<Void, Never>?
+    /// Bumped whenever a session starts or is abandoned, so a cancelled session's
+    /// unwinding can't clobber the state of whatever replaced it.
+    private var sessionToken = 0
 
     // MARK: Loop
     private var link: CADisplayLink?
@@ -212,12 +215,14 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
 
     /// Returns to the menu from anywhere, cancelling the running craft.
     func goToMenu() {
+        sessionToken += 1
         sessionTask?.cancel()
         sessionTask = nil
         tweener.cancelAll()
         session?.cleanup()
         session = nil
         hud.nextVisible = false
+        hud.finish = nil
         particles.clear()
         pointerHandler = nil
         overlay.clearAll()
@@ -237,21 +242,34 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
         }
     }
 
+    /// Back to the menu, then straight into the same project with a fresh sheet.
+    func craftAgain(_ project: ProjectInfo) {
+        goToMenu()
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            try? await self.tweener.until { [weak self] in self?.transitioning == false }
+            try? await self.tweener.wait(0.3)
+            self.startProject(project)
+        }
+    }
+
     /// Starts a craft project: the top sheet of the chosen stack slides to the middle of
     /// the mat and grows into a full sheet, then the session script takes over.
     func startProject(_ project: ProjectInfo) {
         guard case .playable = project.kind, !transitioning else { return }
         transitioning = true
         screen = .crafting
+        sessionToken += 1
+        let token = sessionToken
         let stock = profile.stock
         sessionTask = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
                 try await self.introSheet(stock: stock)
-                self.transitioning = false
+                if self.sessionToken == token { self.transitioning = false }
                 try await self.runSession(project: project, stock: stock)
             } catch {
-                self.transitioning = false
+                if self.sessionToken == token { self.transitioning = false }
             }
         }
     }

@@ -14,10 +14,14 @@ struct ProjectInfo: Identifiable, Equatable {
     let steps: Int
     let kind: Kind
     let reward: Int
+    /// Project whose completion reveals this one (its blueprint may still be on the way).
+    var unlockedBy: String? = nil
 
     static let knife = ProjectInfo(id: "knife", name: "Knife", steps: 6, kind: .playable, reward: 250)
-    static let pistol = ProjectInfo(id: "pistol", name: "Pistol", steps: 8, kind: .locked(requirement: "Craft the knife to unlock"), reward: 400)
-    static let rifle = ProjectInfo(id: "rifle", name: "Rifle", steps: 10, kind: .locked(requirement: "Craft the pistol to unlock"), reward: 600)
+    static let pistol = ProjectInfo(id: "pistol", name: "Pistol", steps: 8, kind: .locked(requirement: "Craft the knife to unlock"),
+                                    reward: 400, unlockedBy: "knife")
+    static let rifle = ProjectInfo(id: "rifle", name: "Rifle", steps: 10, kind: .locked(requirement: "Craft the pistol to unlock"),
+                                   reward: 600, unlockedBy: "pistol")
     static let more = ProjectInfo(id: "more", name: "More Crafts", steps: 0, kind: .comingSoon, reward: 0)
 
     static let all: [ProjectInfo] = [.knife, .pistol, .rifle, .more]

@@ -43,6 +43,7 @@ class CraftSession {
         hud.armNext(label)
         let model = hud
         try await tw.until { model.nextTapped }
+        hud.consumeTap()
     }
 
     // MARK: Feedback
