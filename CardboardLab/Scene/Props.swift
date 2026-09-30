@@ -82,18 +82,22 @@ enum Props {
         return root
     }
 
+    /// Pencil — origin at the graphite tip, body along +x.
     static func pencil() -> SCNNode {
         let root = SCNNode()
         root.name = "pencil"
+        let body = SCNNode()
+        body.position = SCNVector3(0.71, 0, 0)
+        root.addChildNode(body)
         let r: Float = 0.2
-        root.addChildNode(part(MeshBuilder.prism(sides: 6, radius: r, height: 4.2, phase: .pi / 6).transformed(alongX), Palette.yellow))
-        root.addChildNode(part(MeshBuilder.frustum(sides: 6, bottom: r, top: 0.06, height: 0.55, phase: .pi / 6)
+        body.addChildNode(part(MeshBuilder.prism(sides: 6, radius: r, height: 4.2, phase: .pi / 6).transformed(alongX), Palette.yellow))
+        body.addChildNode(part(MeshBuilder.frustum(sides: 6, bottom: r, top: 0.06, height: 0.55, phase: .pi / 6)
             .transformed(Pose(rot: Quat(axis: V3(0, 0, 1), angle: .pi / 2))), Palette.cardboardLight))
-        root.addChildNode(part(MeshBuilder.frustum(sides: 6, bottom: 0.065, top: 0.0, height: 0.18, phase: .pi / 6)
+        body.addChildNode(part(MeshBuilder.frustum(sides: 6, bottom: 0.065, top: 0.0, height: 0.18, phase: .pi / 6)
             .transformed(Pose(rot: Quat(axis: V3(0, 0, 1), angle: .pi / 2), pos: V3(-0.53, 0, 0))), Palette.ink, outline: 0.015))
-        root.addChildNode(part(MeshBuilder.prism(sides: 6, radius: r + 0.015, height: 0.32, phase: .pi / 6)
+        body.addChildNode(part(MeshBuilder.prism(sides: 6, radius: r + 0.015, height: 0.32, phase: .pi / 6)
             .transformed(.translation(V3(4.2, 0, 0)) * alongX), Palette.steelDark))
-        root.addChildNode(part(MeshBuilder.prism(sides: 6, radius: r, height: 0.38, phase: .pi / 6)
+        body.addChildNode(part(MeshBuilder.prism(sides: 6, radius: r, height: 0.38, phase: .pi / 6)
             .transformed(.translation(V3(4.52, 0, 0)) * alongX), Palette.red))
         return root
     }

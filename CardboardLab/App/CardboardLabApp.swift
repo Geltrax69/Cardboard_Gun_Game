@@ -10,6 +10,7 @@ struct CardboardLabApp: App {
                 .environmentObject(engine)
                 .environmentObject(engine.profile)
                 .environmentObject(engine.icons)
+                .environmentObject(engine.hud)
                 .statusBarHidden(true)
                 .persistentSystemOverlays(.hidden)
                 .preferredColorScheme(.dark)

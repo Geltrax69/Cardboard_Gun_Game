@@ -44,6 +44,8 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
     // MARK: Game state
     let profile = PlayerProfile()
     let icons = IconFactory()
+    let hud = HUDModel()
+    private(set) var session: CraftSession?
     @Published private(set) var screen: AppScreen = .menu
     @Published private(set) var menuAnchors: [String: MenuAnchor] = [:]
     @Published private(set) var toasts: [Toast] = []
@@ -210,6 +212,9 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
         sessionTask?.cancel()
         sessionTask = nil
         tweener.cancelAll()
+        session?.cleanup()
+        session = nil
+        hud.nextVisible = false
         pointerHandler = nil
         overlay.clearAll()
         transitioning = true
@@ -273,9 +278,18 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
         try await tweener.wait(0.35)
     }
 
-    /// Runs the project's crafting script. Replaced by the real sessions in later steps.
+    /// Runs the project's crafting script, then returns to the menu.
     private func runSession(project: ProjectInfo, stock: CardboardStock) async throws {
-        try await tweener.until { false }
+        let s: CraftSession
+        switch project.id {
+        case ProjectInfo.knife.id: s = KnifeSession(engine: self, stock: stock)
+        default: return
+        }
+        session = s
+        try await s.run()
+        s.cleanup()
+        session = nil
+        goToMenu()
     }
 
     // MARK: Craft scene helpers

@@ -34,7 +34,7 @@ final class IconFactory: ObservableObject {
         glue.addChildNode(bottle)
         out["tool.glue"] = snap(glue, target: V3(0, 1.4, 0), distance: 11, polar: 1.0)
         out["tool.ruler"] = snap(turned(Props.ruler(), yaw: 0.78), target: V3(0, 0.06, 0), distance: 17, polar: 0.62)
-        out["tool.pencil"] = snap(turned(Props.pencil(), yaw: 0.62), target: V3(1.7, 0, -1.2), distance: 11, polar: 0.62)
+        out["tool.pencil"] = snap(turned(Props.pencil(), yaw: 0.62), target: V3(2.3, 0, -1.6), distance: 12, polar: 0.62)
         out["tool.tape"] = snap(Props.tapeRoll(), target: V3(0, 0.3, 0), distance: 9, polar: 0.72)
 
         out["project.knife"] = snap(turned(KnifeModel.assembled(stock: stock), yaw: 0.28), target: V3(0, 0, 0), distance: 22, polar: 0.72)

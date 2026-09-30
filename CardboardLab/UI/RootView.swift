@@ -18,7 +18,7 @@ struct RootView: View {
                 }
 
                 if engine.screen == .crafting {
-                    CraftOverlay(scale: s)
+                    CraftHUDView(scale: s)
                         .transition(.opacity)
                 }
 
@@ -34,22 +34,5 @@ struct RootView: View {
             .animation(.easeInOut(duration: 0.25), value: showSettings)
         }
         .onAppear { engine.start() }
-    }
-}
-
-/// Crafting overlay (the full HUD arrives with the crafting session).
-struct CraftOverlay: View {
-    @EnvironmentObject var engine: GameEngine
-    let scale: CGFloat
-
-    var body: some View {
-        VStack {
-            HStack {
-                HomeButton(size: 64 * scale) { engine.goToMenu() }
-                Spacer()
-            }
-            Spacer()
-        }
-        .padding(24 * scale)
     }
 }
