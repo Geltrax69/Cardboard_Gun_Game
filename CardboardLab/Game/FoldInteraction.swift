@@ -20,6 +20,8 @@ final class FoldInteraction {
         var to: Float = 1
         var snapAt: Float = 0.7
         var arrowOffset: Float = 0.55
+        /// Fixed on-screen drag direction (for folds whose grab point barely moves).
+        var screenDirection: V2? = nil
     }
 
     private unowned let session: CraftSession
@@ -139,6 +141,9 @@ final class FoldInteraction {
         let orbit = engine.rig.orbit
         let lo = min(spec.from, spec.to), hi = max(spec.from, spec.to)
         let span = spec.to - spec.from
+        if let dir = spec.screenDirection {
+            return delta.dotp(dir.unit) / (minThrow / max(abs(span), 1e-4)) * (span >= 0 ? 1 : -1)
+        }
         let a = clampf(p - 0.04 * span, lo, hi), b = clampf(p + 0.04 * span, lo, hi)
         var tangent = orbit.screen(spec.handle(b)) - orbit.screen(spec.handle(a))
         var speed = tangent.len / max(abs(b - a), 1e-4)

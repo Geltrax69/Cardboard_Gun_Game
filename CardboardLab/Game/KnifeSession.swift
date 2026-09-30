@@ -205,28 +205,121 @@ final class KnifeSession: CraftSession {
     }
 
     /// Drag one flap about its crease until it snaps home.
-    private func foldPanel(_ piece: PieceNode, _ panel: String, grab: V3, first: Bool) async throws {
+    private func foldPanel(_ piece: PieceNode, _ panel: String, grab: V3, first: Bool,
+                           successText: String = "Perfect fold") async throws {
         piece.highlight(panel, color: Palette.cardboardLight)
         let spec = FoldInteraction.Spec.panel(piece, panel, grab: grab)
         try await FoldInteraction(session: self, spec: spec, showHint: hintsOn && first).run()
         piece.highlight(panel, color: nil)
         piece.setCrease(panel, 1)
         piece.setFoldLine(panel, visible: false)
-        success("Perfect fold", at: spec.handle(1) + V3(0, 0.7, 0))
+        success(successText, at: spec.handle(1) + V3(0, 0.7, 0))
+    }
+
+    // MARK: Glue
+
+    /// Lays a glue bead along `path` (flat piece space, on the face that points up).
+    @discardableResult
+    private func applyGlue(on piece: PieceNode, panel: String, path: [V3], normal: V3, first: Bool) async throws -> GlueBeadNode {
+        let bead = GlueBeadNode(localPoints: path, localNormal: normal, toWorld: piece.worldPose(of: panel))
+        piece.panelNodes[panel]?.addChildNode(bead.root)
+        let bottle = engine.workspace.glue
+        try await TraceInteraction.glue(session: self, bead: bead, bottle: bottle, showHint: hintsOn && first).run()
+        bead.settle()
+        success("Glue applied", at: bead.path.point(at: bead.path.length / 2) + V3(0, 0.8, 0))
+        let from = bottle.pose, rest = engine.workspace.glueRest
+        tw.start(0.6, ease: .inOutCubic) { k in bottle.setPose(from.lerp(rest, k)) }
+        return bead
+    }
+
+    /// Brief mint glow along a seam when two surfaces lock together.
+    private func flashSeam(_ points: [V3]) {
+        var m = MeshData()
+        MeshBuilder.ribbon(points, width: 0.2, into: &m)
+        let node = SceneBridge.node(m, [Mat.unlit(Palette.mint, opacity: 0.9, depthWrite: false)], name: "seam")
+        node.renderingOrder = 20
+        node.castsShadow = false
+        engine.craftRoot.addChildNode(node)
+        for p in points { engine.particles.sparks(at: p, count: 6) }
+        tw.start(0.9, ease: .inQuad) { k in
+            node.opacity = CGFloat(1 - k)
+            if k >= 1 { node.removeFromParentNode() }
+        }
     }
 
     private func stepGlueTab() async throws {
-        step(3, "Glue the tab", "Run the glue along the highlighted tab.", tool: .glue)
+        guard let handle else { return }
+        step(3, "Glue the tab", "Run the glue along the dotted guide on the tab.", tool: .glue)
+        glide(to: handleCenter(), size: V2(6.8, 5.6), shot: .threeQuarter, duration: 0.8)
+        handle.highlight("GT", color: Palette.cardboardLight)
+        try await applyGlue(on: handle, panel: "GT", path: bp.handleGluePath, normal: V3(0, -1, 0), first: true)
+        handle.highlight("GT", color: nil)
+        say("Glue's on", "Close the lid onto the tab before it dries.", tool: .glue)
         try await waitForNext()
     }
 
     private func stepCloseHandle() async throws {
-        step(4, "Close the handle", "Fold the lid down onto the glued tab.", tool: .hand)
+        guard let handle else { return }
+        let t = stock.thickness
+        step(4, "Close the handle", "Fold the lid over onto the glued tab.", tool: .hand)
+        // The matching surface glows mint so it's obvious where the lid lands.
+        handle.highlight("GT", color: Palette.mint)
+        let lidEdge = V3(bp.L / 2, t, -bp.W / 2 - bp.H - bp.W - t)
+        try await foldPanel(handle, "HT", grab: lidEdge, first: true, successText: "Tab aligned")
+        handle.highlight("GT", color: nil)
+        let seam = [0, bp.L].map { handle.world("HT", V3($0, t, -bp.W / 2 - bp.H - bp.W - t)) }
+        flashSeam(seam)
+        rig.addShake(0.12)
+        reward(50, at: handleCenter() + V3(0, 1.2, 0))
+        say("Handle closed!", "A sturdy little box. Now the blade.", tool: .hand)
         try await waitForNext()
     }
 
+    // MARK: Blade
+
+    private var blade: PieceNode? { sheet.pieces["blade"] }
+
     private func stepFoldBlade() async throws {
-        step(5, "Fold the blade", "Crease the ridge and glue the tang.", tool: .hand)
+        guard let blade else { return }
+        let t = stock.thickness
+        let spot = blade.pose
+        let mid = V3(-1.55, 0, 0)
+        step(5, "Score the blade's spine", "Run the bone folder along the blue dashed line.", tool: .scorer)
+        try await look(at: spot.apply(mid), size: V2(12.5, 5.5), shot: .topDown, duration: 0.9)
+        let folder = engine.workspace.boneFolder
+        try await scoreCrease(blade, "BL", folder: folder, first: false)
+        let fp = folder.pose, rest = engine.workspace.folderRest
+        tw.start(0.6) { k in folder.setPose(fp.lerp(rest, k)) }
+
+        step(5, "Fold the blade", "Drag up to pinch a ridge along the spine.", tool: .hand)
+        try await look(at: spot.apply(mid), size: V2(11, 5), shot: .threeQuarter, duration: 1.0)
+        let bp = self.bp
+        let outline = bp.blade.outline
+        let ridge = V3(-2.6, t, 0), edge = V3(-2.6, 0, -bp.halfWidth)
+        var spec = FoldInteraction.Spec(
+            handle: { p in (spot * bp.bladeRootPose(p)).apply(ridge) },
+            pivot: { p in (spot * bp.bladeRootPose(p)).apply(edge) },
+            outline: { p in outline.map { (spot * bp.bladeRootPose(p)).apply($0.onMat(t)) } },
+            apply: { p in
+                blade.setAngles(bp.bladeAngles(p))
+                blade.pose = spot * bp.bladeRootPose(p)
+                blade.setCrease("BL", min(1, 0.55 + p))
+            }
+        )
+        spec.screenDirection = V2(0, -1)
+        spec.arrowOffset = 0.9
+        blade.highlight("BU", color: Palette.cardboardLight)
+        blade.highlight("BL", color: Palette.cardboardLight)
+        try await FoldInteraction(session: self, spec: spec, showHint: hintsOn).run()
+        blade.highlight("BU", color: nil)
+        blade.highlight("BL", color: nil)
+        blade.setFoldLine("BL", visible: false)
+        success("Perfect fold", at: spot.apply(mid) + V3(0, 1.2, 0))
+
+        step(5, "Glue the tang", "Run the glue along the narrow end of the blade.", tool: .glue)
+        glide(to: blade.pose.apply(V3(1.6, 0, 0)), size: V2(7, 4.5), shot: .threeQuarter, duration: 0.8)
+        try await applyGlue(on: blade, panel: "BU", path: bp.tangGluePath, normal: V3(0, 1, 0), first: false)
+        say("Blade ready", "Ridge folded, tang glued. Time to put it together!", tool: .hand)
         try await waitForNext()
     }
 
