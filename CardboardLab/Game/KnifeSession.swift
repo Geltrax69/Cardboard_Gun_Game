@@ -99,6 +99,7 @@ final class KnifeSession: CraftSession {
         away.y = 0
         away = away.len > 0.01 ? away.unit * 0.35 : V3(0, 0, 0.35)
         engine.particles.flakes(at: sheet.center(of: id), count: 10)
+        engine.sound.play(.snap, volume: 0.7)
         try await tw.tween(0.5, ease: .outBack) { k in
             piece.pose = Pose(rot: base.rot, pos: base.pos + V3(away.x * k, 0.32 * k, away.z * k))
             cut.fade(k)
@@ -123,6 +124,7 @@ final class KnifeSession: CraftSession {
     private func clearWaste() async throws {
         let waste = sheet.waste
         let start = waste.pose
+        engine.sound.play(.whoosh)
         try await tw.tween(0.9, ease: .inCubic) { k in
             let spin = Quat(axis: up3, angle: 0.35 * k)
             waste.setPose(Pose(rot: start.rot * spin, pos: start.pos + V3(-28 * k, 0.2 * k, 4 * k)))
@@ -447,6 +449,7 @@ final class KnifeSession: CraftSession {
         rig.glide(to: rig.framing(center: top.pos, size: V2(12.5, 6), view: .hero), duration: 1.2, tweener: tw)
         try await tw.tween(0.55, ease: .outBack) { [knifeRoot] k in knifeRoot.setPose(start.lerp(top, k)) }
         engine.particles.confetti(at: top.pos + V3(0, 0.5, 0), count: 90)
+        engine.sound.play(.pop)
         rig.addShake(0.22)
         reward(project.reward, at: top.pos + V3(0, 1.8, 0))
         engine.profile.recordCompletion(project.id)

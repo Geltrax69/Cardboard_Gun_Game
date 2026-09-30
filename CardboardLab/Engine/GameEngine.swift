@@ -38,6 +38,7 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
     let workspace = Workspace()
     let menu = MenuScene()
     let particles = Particles()
+    let sound = SoundBoard()
     let tweener = Tweener()
     /// Everything that belongs to the current craft (sheet, pieces, guides).
     let craftRoot = SCNNode()
@@ -96,6 +97,8 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
 
         menu.select(profile.stock.id)
         rig.set(menuShot())
+        let profile = self.profile
+        sound.isEnabled = { profile.soundOn }
     }
 
     // MARK: Loop
@@ -205,6 +208,7 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
             return .tooExpensive
         }
         menu.select(stock.id)
+        sound.play(.tap)
         icons.renderAll(stock: stock)
         if !wasUnlocked {
             toast("\(stock.name) unlocked!", .success)

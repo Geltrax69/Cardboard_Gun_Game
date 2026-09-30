@@ -68,7 +68,10 @@ struct CraftHUDView: View {
                         toolChip(s)
                         Spacer()
                         if hud.nextVisible {
-                            NextButton(title: hud.nextTitle, scale: s) { hud.tapNext() }
+                            NextButton(title: hud.nextTitle, scale: s) {
+                                engine.sound.play(.tap)
+                                hud.tapNext()
+                            }
                                 .transition(.scale(scale: 0.6).combined(with: .opacity))
                         }
                     }

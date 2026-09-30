@@ -99,6 +99,7 @@ final class TraceInteraction {
         let engine = session.engine
         var flakeDistance: Float = 0
         let tool = TraceTool(node: knife, pose: { knifePose(tip: $0, tangent: $1) }, onAdvance: { head, tangent, moved in
+            engine.sound.play(.cut, volume: 0.7, minInterval: 0.06)
             flakeDistance += moved
             if flakeDistance > 0.28 {
                 flakeDistance = 0
@@ -109,7 +110,10 @@ final class TraceInteraction {
     }
 
     static func score(session: CraftSession, line: ScoreLineNode, folder: SCNNode, showHint: Bool) -> TraceInteraction {
-        let tool = TraceTool(node: folder, pose: { penPose(tip: $0, tangent: $1, raise: radians(30)) })
+        let engine = session.engine
+        let tool = TraceTool(node: folder, pose: { penPose(tip: $0, tangent: $1, raise: radians(30)) }, onAdvance: { _, _, _ in
+            engine.sound.play(.score, volume: 0.6, minInterval: 0.07)
+        })
         return TraceInteraction(session: session, visual: line, tool: tool, showHint: showHint, allowReverse: true,
                                 hintText: "Swipe along the blue dashed line")
     }
@@ -118,6 +122,7 @@ final class TraceInteraction {
         let engine = session.engine
         var dropDistance: Float = 0
         let tool = TraceTool(node: bottle, pose: { bottlePose(tip: $0, tangent: $1) }, onAdvance: { head, _, moved in
+            engine.sound.play(.glue, volume: 0.6, minInterval: 0.12)
             dropDistance += moved
             if dropDistance > 0.6 {
                 dropDistance = 0

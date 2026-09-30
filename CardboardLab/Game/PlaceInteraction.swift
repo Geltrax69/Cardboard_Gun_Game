@@ -119,6 +119,7 @@ final class PlaceInteraction {
             } catch {
                 return
             }
+            self.engine.sound.play(.snap)
             self.done = true
         }
     }

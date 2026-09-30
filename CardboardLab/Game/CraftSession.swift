@@ -50,10 +50,12 @@ class CraftSession {
 
     func reward(_ amount: Int, at world: V3? = nil) {
         engine.profile.addCoins(amount)
+        engine.sound.play(.coin)
         engine.toast("+\(amount) CRAFT", .reward, at: world, life: 1.5)
     }
 
     func success(_ text: String, at world: V3? = nil) {
+        engine.sound.play(.success, volume: 0.8)
         engine.toast(text, .success, at: world, life: 1.4)
     }
 

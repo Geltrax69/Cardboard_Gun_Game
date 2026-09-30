@@ -128,6 +128,7 @@ final class FoldInteraction {
             }
             self.settling = false
             if success {
+                self.engine.sound.play(.fold)
                 self.engine.rig.addShake(0.06)
                 self.engine.particles.sparks(at: self.spec.pivot(target), count: 10)
                 self.done = true
