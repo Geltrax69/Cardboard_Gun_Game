@@ -55,8 +55,12 @@ final class TemplateSheet {
                     let c = CutLineNode(points: ring, name: "\(def.id)-hole")
                     root.addChildNode(c.root)
                     inner.append(c)
-                    let discMesh = MeshBuilder.cardboard(outline: Poly.signedArea(hole) < 0 ? hole.reversed() : hole, thickness: t)
+                    // Disc geometry is centred on its own middle so it can tumble in place.
+                    let mid = Poly.centroid(hole)
+                    let local = hole.map { $0 - mid }
+                    let discMesh = MeshBuilder.cardboard(outline: Poly.signedArea(local) < 0 ? local.reversed() : local, thickness: t)
                     let disc = SceneBridge.node(discMesh, mats.array, name: "disc")
+                    disc.setPosition(mid.onMat(0))
                     disc.castsShadow = true
                     piece.panelNodes[p.id]?.addChildNode(disc)
                     discs.append(disc)

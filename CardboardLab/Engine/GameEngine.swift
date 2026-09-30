@@ -37,6 +37,7 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
     let rig = CameraRig()
     let workspace = Workspace()
     let menu = MenuScene()
+    let particles = Particles()
     let tweener = Tweener()
     /// Everything that belongs to the current craft (sheet, pieces, guides).
     let craftRoot = SCNNode()
@@ -76,6 +77,7 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
         scene.rootNode.addChildNode(menu.root)
         craftRoot.name = "craft"
         scene.rootNode.addChildNode(craftRoot)
+        scene.rootNode.addChildNode(particles.root)
         Workspace.installLights(in: scene)
 
         scnView.scene = scene
@@ -111,6 +113,7 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
         time += dt
         tweener.update(dt)
         for handler in Array(frameHandlers.values) { handler(dt) }
+        particles.update(Float(dt))
         rig.update(dt)
         if screen == .menu {
             menu.update(time: time)
@@ -215,6 +218,7 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
         session?.cleanup()
         session = nil
         hud.nextVisible = false
+        particles.clear()
         pointerHandler = nil
         overlay.clearAll()
         transitioning = true

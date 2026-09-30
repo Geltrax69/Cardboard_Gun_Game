@@ -153,6 +153,24 @@ do {
     check(tr.isDone, "finished the path: \(tr.progress)/\(path.length)")
 }
 
+// MARK: Tracer on a tiny closed loop (lanyard hole)
+do {
+    let ring = Poly.circle(center: V2(0, 0), radius: 0.2, sides: 8)
+    let loop = Polyline((ring + [ring[0]]).map { $0.onMat() })
+    var tr = PathTracer(path: loop, lookahead: min(2.0, loop.length * 0.4))
+    let project: (V3) -> V2 = { V2($0.x * 70, $0.z * 70) }
+    // Wiggling around the start (which is also the end) must not finish the loop.
+    for a in stride(from: Float(-0.6), through: 0.1, by: 0.05) {
+        tr.feed(finger: V2(cos(a), sin(a)) * 14, tolerance: 48, project: project)
+    }
+    check(!tr.isDone && tr.progress < loop.length * 0.5, "tiny loop not completed by wiggling at the start: \(tr.progress)")
+    // Going round does finish it.
+    for a in stride(from: Float(0), through: 2 * .pi + 0.2, by: 0.1) {
+        tr.feed(finger: V2(cos(a), sin(a)) * 14, tolerance: 48, project: project)
+    }
+    check(tr.isDone, "tiny loop completed by circling: \(tr.progress)/\(loop.length)")
+}
+
 // MARK: Mesh
 do {
     let piece = bp.handle
