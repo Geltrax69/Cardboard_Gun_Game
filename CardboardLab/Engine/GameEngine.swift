@@ -4,6 +4,23 @@ import SceneKit
 import SwiftUI
 import UIKit
 
+enum AppScreen: Equatable {
+    case menu
+    case crafting
+}
+
+/// Floating feedback text ("+100 CRAFT", "Perfect fold", …).
+struct Toast: Identifiable, Equatable {
+    enum Style: Equatable { case reward, success, hint, info }
+    let id = UUID()
+    var text: String
+    var style: Style
+    /// Screen position; nil = centred under the instruction.
+    var position: CGPoint?
+    var born: Double
+    var life: Double
+}
+
 /// Owns the SceneKit world, the game loop and input routing. Crafting sessions and the
 /// menu drive it; SwiftUI observes it.
 @MainActor
@@ -19,9 +36,20 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
     }()
     let rig = CameraRig()
     let workspace = Workspace()
+    let menu = MenuScene()
     let tweener = Tweener()
     /// Everything that belongs to the current craft (sheet, pieces, guides).
     let craftRoot = SCNNode()
+
+    // MARK: Game state
+    let profile = PlayerProfile()
+    let icons = IconFactory()
+    @Published private(set) var screen: AppScreen = .menu
+    @Published private(set) var menuAnchors: [String: MenuAnchor] = [:]
+    @Published private(set) var toasts: [Toast] = []
+    @Published var selectedTool: String = "knife"
+    @Published private(set) var transitioning = false
+    private var sessionTask: Task<Void, Never>?
 
     // MARK: Loop
     private var link: CADisplayLink?
@@ -35,11 +63,15 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
     var pointerHandler: ((PointerPhase, V2) -> Void)?
     private(set) var viewportSize = CGSize(width: 1180, height: 820)
 
+    /// Screen fractions the menu UI covers (title/top, tools/bottom, projects/right).
+    let menuInsets = CameraRig.Insets(top: 0.3, bottom: 0.3, left: 0.03, right: 0.3)
+
     override init() {
         super.init()
         scene.background.contents = Palette.table
         scene.rootNode.addChildNode(rig.node)
         scene.rootNode.addChildNode(workspace.root)
+        scene.rootNode.addChildNode(menu.root)
         craftRoot.name = "craft"
         scene.rootNode.addChildNode(craftRoot)
         Workspace.installLights(in: scene)
@@ -55,7 +87,8 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
         scnView.isMultipleTouchEnabled = false
         scnView.sink = self
 
-        rig.set(rig.framing(center: V3(0, 0, 0), size: V2(26, 18), view: .menu))
+        menu.select(profile.stock.id)
+        rig.set(menuShot())
     }
 
     // MARK: Loop
@@ -66,6 +99,7 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
         l.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
         l.add(to: .main, forMode: .common)
         link = l
+        icons.renderAll(stock: profile.stock)
     }
 
     @objc private func step(_ link: CADisplayLink) {
@@ -76,6 +110,13 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
         tweener.update(dt)
         for handler in Array(frameHandlers.values) { handler(dt) }
         rig.update(dt)
+        if screen == .menu {
+            menu.update(time: time)
+            refreshMenuAnchors()
+        }
+        if toasts.contains(where: { time - $0.born > $0.life }) {
+            toasts.removeAll { time - $0.born > $0.life }
+        }
     }
 
     /// Registers a per-frame callback; returns a token for `removeFrameHandler`.
@@ -93,8 +134,10 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
 
     private func viewportChanged(_ size: CGSize) {
         guard size.width > 0, size.height > 0 else { return }
+        let first = viewportSize != size
         viewportSize = size
         rig.setViewport(size)
+        if first && screen == .menu && !transitioning { rig.set(menuShot()) }
     }
 
     // MARK: Input
@@ -105,12 +148,12 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
 
     // MARK: Projection helpers (view coordinates, points)
 
-    func screen(_ p: V3) -> CGPoint {
+    func toScreen(_ p: V3) -> CGPoint {
         let s = rig.orbit.screen(p)
         return CGPoint(x: CGFloat(s.x), y: CGFloat(s.y))
     }
 
-    func screenV(_ p: V3) -> V2 { rig.orbit.screen(p) }
+    func toScreenV(_ p: V3) -> V2 { rig.orbit.screen(p) }
 
     func hit(_ p: V2, planeY y: Float) -> V3? { rig.orbit.hit(p, planeY: y) }
 
@@ -120,27 +163,127 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
         return max(1, a.dist(b))
     }
 
+    // MARK: Toasts
+
+    func toast(_ text: String, _ style: Toast.Style = .info, at world: V3? = nil, life: Double = 1.6) {
+        let pos = world.map { toScreen($0) }
+        toasts.append(Toast(text: text, style: style, position: pos, born: time, life: life))
+        if toasts.count > 4 { toasts.removeFirst(toasts.count - 4) }
+    }
+
+    // MARK: Menu
+
+    func menuShot() -> OrbitCamera {
+        rig.framing(center: V3(0, 0.4, -0.6), size: V2(21, 6.5), view: .menu, insets: menuInsets)
+    }
+
+    private func refreshMenuAnchors() {
+        let a = menu.anchors(camera: rig.orbit)
+        let changed = a.contains { key, value in
+            guard let old = menuAnchors[key] else { return true }
+            return abs(old.label.x - value.label.x) > 0.5 || abs(old.label.y - value.label.y) > 0.5
+                || abs(old.rect.width - value.rect.width) > 0.5
+        }
+        if changed || a.count != menuAnchors.count { menuAnchors = a }
+    }
+
+    enum StockChoice { case selected, bought, tooExpensive }
+
+    @discardableResult
+    func chooseStock(_ stock: CardboardStock) -> StockChoice {
+        let wasUnlocked = profile.isUnlocked(stock)
+        guard profile.selectStock(stock) else {
+            toast("Need \(stock.price) CRAFT — finish projects to earn more", .hint, life: 2.2)
+            return .tooExpensive
+        }
+        menu.select(stock.id)
+        icons.renderAll(stock: stock)
+        if !wasUnlocked {
+            toast("\(stock.name) unlocked!", .success)
+            return .bought
+        }
+        return .selected
+    }
+
+    /// Returns to the menu from anywhere, cancelling the running craft.
+    func goToMenu() {
+        sessionTask?.cancel()
+        sessionTask = nil
+        tweener.cancelAll()
+        pointerHandler = nil
+        overlay.clearAll()
+        transitioning = true
+        screen = .menu
+        Task { @MainActor in
+            defer { transitioning = false }
+            let fadeOut = craftRoot.childNodes
+            menu.root.isHidden = false
+            for id in menu.stacks.keys { menu.hideTopSheet(id, false) }
+            rig.glide(to: menuShot(), duration: 1.0, tweener: tweener)
+            try? await tweener.tween(0.45) { [weak self] k in
+                for n in fadeOut { n.opacity = CGFloat(1 - k) }
+                self?.menu.root.opacity = CGFloat(k)
+            }
+            for n in fadeOut { n.removeFromParentNode() }
+        }
+    }
+
+    /// Starts a craft project: the top sheet of the chosen stack slides to the middle of
+    /// the mat and grows into a full sheet, then the session script takes over.
+    func startProject(_ project: ProjectInfo) {
+        guard case .playable = project.kind, !transitioning else { return }
+        transitioning = true
+        screen = .crafting
+        let stock = profile.stock
+        sessionTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await self.introSheet(stock: stock)
+                self.transitioning = false
+                try await self.runSession(project: project, stock: stock)
+            } catch {
+                self.transitioning = false
+            }
+        }
+    }
+
+    private func introSheet(stock: CardboardStock) async throws {
+        clearCraft()
+        let size = KnifeBlueprint(thickness: stock.thickness).template.sheetSize
+        let from = menu.topSheetWorldPose(stock.id)
+        menu.hideTopSheet(stock.id, true)
+        let sheet = makeBlankSheet(stock: stock, size: size)
+        craftRoot.addChildNode(sheet)
+        let startScale = V3(menu.stackSize.x / size.x, 1, menu.stackSize.y / size.y)
+        sheet.setPose(from)
+        sheet.scale = SCNVector3(startScale.x, 1, startScale.z)
+        rig.glide(to: rig.framing(center: V3(0, 0, 0), size: size + V2(3.2, 2.6), view: .topDown), duration: 1.4, tweener: tweener)
+        let mid = Pose(rot: from.rot, pos: V3(from.pos.x * 0.4, 3.2, from.pos.z * 0.4))
+        try await tweener.tween(0.55, ease: .outCubic) { [weak self] k in
+            sheet.setPose(from.lerp(mid, k))
+            self?.menu.root.opacity = CGFloat(1 - k)
+        }
+        menu.root.isHidden = true
+        try await tweener.tween(0.6, ease: .inOutCubic) { k in
+            sheet.setPose(mid.lerp(.identity, k))
+            let s = mix3(startScale, V3(1, 1, 1), k)
+            sheet.scale = SCNVector3(s.x, 1, s.z)
+        }
+        rig.addShake(0.12)
+        try await tweener.wait(0.35)
+    }
+
+    /// Runs the project's crafting script. Replaced by the real sessions in later steps.
+    private func runSession(project: ProjectInfo, stock: CardboardStock) async throws {
+        try await tweener.until { false }
+    }
+
     // MARK: Craft scene helpers
 
     func clearCraft() {
         craftRoot.childNodes.forEach { $0.removeFromParentNode() }
         overlay.clearAll()
         pointerHandler = nil
-    }
-
-    /// Slides a fresh sheet onto the mat and settles into the top-down planning view.
-    func showWorkbench(stock: CardboardStock) async throws {
-        clearCraft()
-        let size = V2(15.2, 10)
-        let sheet = makeBlankSheet(stock: stock, size: size)
-        craftRoot.addChildNode(sheet)
-        let start = Pose(rot: Quat(axis: V3(0, 1, 0), angle: -0.25), pos: V3(-22, 1.5, 6))
-        sheet.setPose(start)
-        rig.glide(to: rig.framing(center: V3(0, 0, 0), size: size + V2(3.2, 2.4), view: .topDown), duration: 1.3, tweener: tweener)
-        try await tweener.tween(0.9, ease: .outCubic) { k in
-            sheet.setPose(start.lerp(.identity, k))
-        }
-        try await tweener.wait(0.4)
     }
 
     /// Plain sheet on the mat (the empty workbench before a template is placed).

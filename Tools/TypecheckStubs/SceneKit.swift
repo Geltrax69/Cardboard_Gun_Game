@@ -1,4 +1,5 @@
 @_exported import UIKit
+import Metal
 
 public struct SCNVector3 {
     public var x: Float, y: Float, z: Float
@@ -168,9 +169,8 @@ open class SCNView: UIView {
 }
 
 open class SCNRenderer: NSObject {
-    public init(device: AnyObject?, options: [AnyHashable: Any]? = nil) {}
+    public init(device: MTLDevice?, options: [AnyHashable: Any]? = nil) {}
     open var scene: SCNScene?
     open var pointOfView: SCNNode?
     open func snapshot(atTime time: CFTimeInterval, with size: CGSize, antialiasingMode: SCNAntialiasingMode) -> UIImage { UIImage() }
 }
-public func MTLCreateSystemDefaultDevice() -> AnyObject? { nil }

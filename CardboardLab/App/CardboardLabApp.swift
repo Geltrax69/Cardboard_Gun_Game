@@ -8,6 +8,8 @@ struct CardboardLabApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(engine)
+                .environmentObject(engine.profile)
+                .environmentObject(engine.icons)
                 .statusBarHidden(true)
                 .persistentSystemOverlays(.hidden)
                 .preferredColorScheme(.dark)

@@ -17,7 +17,7 @@ final class Workspace {
 
     /// Resting transforms of the tools that get picked up during crafting.
     let knifeRest = Pose(rot: Quat.euler(yaw: -0.95, pitch: 0, roll: 0.12), pos: V3(11.6, 0.32, 6.3))
-    let glueRest = Pose(rot: Quat(axis: V3(1, 0, 0), angle: .pi / 2), pos: V3(12.4, 0.65, 0.6))
+    let glueRest = Pose(rot: Quat(axis: V3(1, 0, 0), angle: .pi / 2), pos: V3(11.5, 0.65, 0.4))
 
     init() {
         root.name = "workspace"
@@ -76,7 +76,7 @@ final class Workspace {
         ruler.setPose(Pose(rot: Quat(axis: V3(0, 1, 0), angle: 0.95), pos: V3(-12.2, 0, -7.4)))
         root.addChildNode(ruler)
 
-        pencil.setPose(Pose(rot: Quat(axis: V3(0, 1, 0), angle: 0.62), pos: V3(-12.6, 0.2, 0.9)))
+        pencil.setPose(Pose(rot: Quat(axis: V3(0, 1, 0), angle: 0.62), pos: V3(-11.9, 0.2, 1.4)))
         root.addChildNode(pencil)
 
         tape.setPose(Pose(pos: V3(12.4, 0, -6.8)))

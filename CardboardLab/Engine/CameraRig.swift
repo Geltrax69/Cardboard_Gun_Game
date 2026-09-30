@@ -6,7 +6,7 @@ import UIKit
 ///  • three-quarter for folding, so flaps visibly rise out of the flat plane
 @MainActor
 final class CameraRig {
-    enum View {
+    enum Shot {
         case topDown, threeQuarter, hero, menu
 
         var polar: Float {
@@ -52,15 +52,25 @@ final class CameraRig {
         apply()
     }
 
-    /// Orbit that frames a `size` (w × d) region of the mat centred on `center`.
-    func framing(center: V3, size: V2, view: View, zoom: Float = 1) -> OrbitCamera {
+    /// Screen fractions covered by UI on each side.
+    struct Insets {
+        var top: Float, bottom: Float, left: Float, right: Float
+    }
+
+    var hudInsets: Insets { Insets(top: safeTop, bottom: safeBottom, left: 0.02, right: 0.02) }
+
+    /// Orbit that frames a `size` (w × d) region of the mat centred on `center`, placed in
+    /// the middle of the area not covered by UI.
+    func framing(center: V3, size: V2, view: Shot, zoom: Float = 1, insets: Insets? = nil) -> OrbitCamera {
+        let ins = insets ?? hudInsets
         var o = orbit
         o.polar = view.polar
         o.azimuth = view.azimuth
-        o.distance = o.fitDistance(width: size.x, depth: size.y, polar: view.polar, safeTop: safeTop, safeBottom: safeBottom) * zoom
-        // Shift the look target so the subject sits in the middle of the un-covered area.
+        o.distance = o.fitDistance(width: size.x, depth: size.y, polar: view.polar,
+                                   safeTop: ins.top, safeBottom: ins.bottom, safeSide: (ins.left + ins.right) / 2) * zoom
         let worldH = 2 * o.distance * tan(o.fovY / 2)
-        o.target = center + o.up * ((safeTop - safeBottom) / 2 * worldH)
+        let worldW = worldH * o.aspect
+        o.target = center + o.up * ((ins.top - ins.bottom) / 2 * worldH) + o.right * ((ins.right - ins.left) / 2 * worldW)
         return o
     }
 

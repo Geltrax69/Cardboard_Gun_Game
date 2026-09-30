@@ -1,0 +1,174 @@
+import SceneKit
+import UIKit
+
+/// SceneKit representation of one cardboard piece: a node per panel (posed by the
+/// piece's FoldRig), ink outlines that appear once the piece is cut free, blue dashed
+/// fold lines and crease marks that darken as a hinge is scored and folded.
+@MainActor
+final class PieceNode {
+    let def: PieceDef
+    let stock: CardboardStock
+    let root = SCNNode()
+    private(set) var rig: FoldRig
+    private(set) var panelNodes: [String: SCNNode] = [:]
+    private var inkNodes: [SCNNode] = []
+    /// Blue dashed fold line per child panel id (drawn on the parent panel).
+    private(set) var dashNodes: [String: SCNNode] = [:]
+    /// Dark crease line per child panel id.
+    private(set) var creaseNodes: [String: SCNNode] = [:]
+    private var bodyMeshes: [String: MeshData] = [:]
+    private let materials: CardboardMaterials
+
+    /// World transform of the piece frame.
+    var pose: Pose {
+        get { root.pose }
+        set { root.setPose(newValue) }
+    }
+
+    init(def: PieceDef, stock: CardboardStock, showFoldLines: Bool = true, inkVisible: Bool = true) {
+        self.def = def
+        self.stock = stock
+        self.rig = FoldRig(piece: def, thickness: stock.thickness)
+        self.materials = CardboardMaterials(stock: stock)
+        root.name = "piece-\(def.id)"
+        let t = stock.thickness
+
+        for p in def.panels {
+            let full = MeshBuilder.cardboard(outline: p.outline, holes: p.holes, thickness: t,
+                                             inkEdges: def.freeEdges(of: p.id), inkWidth: 0.05)
+            let body = full.extract(parts: [0, 1, 2])
+            bodyMeshes[p.id] = body
+            let node = SceneBridge.node(body, [materials.top, materials.under, materials.side], name: p.id)
+            node.castsShadow = true
+            let ink = SceneBridge.node(full.extract(parts: [3]), [Mat.ink], name: "ink")
+            ink.castsShadow = false
+            ink.isHidden = !inkVisible
+            node.addChildNode(ink)
+            inkNodes.append(ink)
+            root.addChildNode(node)
+            panelNodes[p.id] = node
+        }
+
+        // Fold lines live on the parent panel so they stay put while the flap rises.
+        for p in def.panels {
+            guard let h = p.hinge, let parent = p.parent, let parentNode = panelNodes[parent] else { continue }
+            var dash = MeshData()
+            MeshBuilder.dashes(h.a.onMat(t + 0.006), h.b.onMat(t + 0.006), width: 0.06, into: &dash)
+            var dashUnder = MeshData()
+            MeshBuilder.dashes(h.a.onMat(-0.006), h.b.onMat(-0.006), width: 0.06, normal: V3(0, -1, 0), into: &dashUnder)
+            dash.append(dashUnder)
+            let dashNode = SceneBridge.node(dash, [Mat.unlit(Palette.blue)], name: "fold-\(p.id)")
+            dashNode.castsShadow = false
+            dashNode.isHidden = !showFoldLines
+            parentNode.addChildNode(dashNode)
+            dashNodes[p.id] = dashNode
+
+            var crease = MeshData()
+            MeshBuilder.ribbon([h.a.onMat(t + 0.004), h.b.onMat(t + 0.004)], width: 0.035, into: &crease, extend: false)
+            MeshBuilder.ribbon([h.a.onMat(-0.004), h.b.onMat(-0.004)], width: 0.035, normal: V3(0, -1, 0), into: &crease, extend: false)
+            let creaseNode = SceneBridge.node(crease, [Mat.unlit(Palette.cardboardDark)], name: "crease-\(p.id)")
+            creaseNode.castsShadow = false
+            creaseNode.opacity = 0
+            parentNode.addChildNode(creaseNode)
+            creaseNodes[p.id] = creaseNode
+        }
+        applyRig()
+    }
+
+    // MARK: Folding
+
+    func setAngle(_ panel: String, _ angle: Float) {
+        rig.angles[panel] = angle
+        applyRig()
+    }
+
+    func setFold(_ panel: String, progress: Float) {
+        guard let h = def.panel(panel)?.hinge else { return }
+        rig.angles[panel] = h.signedTarget * progress
+        if let crease = creaseNodes[panel] {
+            crease.opacity = max(crease.opacity, CGFloat(min(1, abs(progress) * 1.6)))
+        }
+        applyRig()
+    }
+
+    func setAngles(_ angles: [String: Float]) {
+        for (k, v) in angles { rig.angles[k] = v }
+        applyRig()
+    }
+
+    func foldAll(progress: Float = 1) {
+        for p in def.panels where p.hinge != nil { setFold(p.id, progress: progress) }
+    }
+
+    func applyRig() {
+        let poses = rig.poses()
+        for (id, node) in panelNodes { node.setPose(poses[id] ?? .identity) }
+    }
+
+    func panelPose(_ id: String) -> Pose { rig.pose(of: id) }
+
+    /// World transform of a panel.
+    func worldPose(of panel: String) -> Pose { pose * rig.pose(of: panel) }
+
+    /// World position of a point given in flat piece space.
+    func world(_ panel: String, _ p: V3) -> V3 { worldPose(of: panel).apply(p) }
+
+    // MARK: Look
+
+    func setInkVisible(_ visible: Bool) {
+        for n in inkNodes { n.isHidden = !visible }
+    }
+
+    func setFoldLinesVisible(_ visible: Bool) {
+        for n in dashNodes.values { n.isHidden = !visible }
+    }
+
+    func setFoldLine(_ panel: String, visible: Bool) {
+        dashNodes[panel]?.isHidden = !visible
+    }
+
+    func setCrease(_ panel: String, _ amount: Float) {
+        creaseNodes[panel]?.opacity = CGFloat(saturate(amount))
+    }
+
+    /// Temporarily recolors a panel's faces (hover / target highlight).
+    func highlight(_ panel: String, color: UIColor?) {
+        guard let node = panelNodes[panel] else { return }
+        if let color {
+            node.geometry?.materials = [Mat.lambert(color), Mat.lambert(color), materials.side]
+        } else {
+            node.geometry?.materials = [materials.top, materials.under, materials.side]
+        }
+    }
+
+    func setCastsShadow(_ on: Bool) {
+        for n in panelNodes.values { n.castsShadow = on }
+    }
+
+    /// Axis-aligned bounds of the folded piece in its own frame.
+    var foldedBounds: (min: V3, max: V3) { rig.foldedBounds() }
+}
+
+/// Builds the finished knife for icons, the guide and the reveal.
+@MainActor
+enum KnifeModel {
+    static func assembled(stock: CardboardStock) -> SCNNode {
+        let bp = KnifeBlueprint(thickness: stock.thickness)
+        let root = SCNNode()
+        root.name = "knifeModel"
+        let handle = PieceNode(def: bp.handle, stock: stock, showFoldLines: false)
+        handle.foldAll()
+        let blade = PieceNode(def: bp.blade, stock: stock, showFoldLines: false)
+        blade.setAngles(bp.bladeAngles(1))
+        blade.pose = bp.bladeSeated
+        let band = PieceNode(def: bp.guardBand, stock: stock, showFoldLines: false)
+        band.foldAll()
+        band.pose = bp.guardOnHandle
+        let assembly = SCNNode()
+        for p in [handle, blade, band] { assembly.addChildNode(p.root) }
+        // Centre the knife on the origin (its span is roughly x −6.4…4.5, y 0…1.6).
+        assembly.position = SCNVector3(0.95, -0.7, 0)
+        root.addChildNode(assembly)
+        return root
+    }
+}

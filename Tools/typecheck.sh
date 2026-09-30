@@ -8,9 +8,8 @@ WORK="${TMPDIR:-/tmp}/cardboardlab-typecheck"
 rm -rf "$WORK"; mkdir -p "$WORK/mods" "$WORK/src"
 STUBS="$ROOT/Tools/TypecheckStubs"
 build() { swiftc -parse-as-library -emit-module -module-name "$1" -I "$WORK/mods" -o "$WORK/mods/$1.swiftmodule" "$STUBS/$1.swift" 2>&1; }
-for m in CoreGraphics QuartzCore UIKit Combine SceneKit SwiftUI; do build $m; done
-[ -f "$STUBS/AVFoundation.swift" ] && build AVFoundation
-[ -f "$STUBS/Metal.swift" ] && build Metal
+for m in CoreGraphics QuartzCore UIKit Combine Metal SceneKit SwiftUI; do build $m; done
+if [ -f "$STUBS/AVFoundation.swift" ]; then build AVFoundation; fi
 find "$ROOT/CardboardLab" -name '*.swift' | while read -r f; do
   out="$WORK/src/$(echo "${f#$ROOT/}" | tr '/' '_')"
   sed -e 's/@objc //g' -e 's/#selector(\([^)]*)\))/Selector("\1")/g' -e 's/#selector(\([^)]*\))/Selector("\1")/g' "$f" > "$out"

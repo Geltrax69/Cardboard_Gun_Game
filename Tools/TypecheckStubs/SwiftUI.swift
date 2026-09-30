@@ -189,6 +189,12 @@ public struct TimelineView<Content: View>: View {
 }
 public struct AnimationTimelineSchedule { public static var animation: AnimationTimelineSchedule { AnimationTimelineSchedule() } }
 
+public struct Label<Title: View, Icon: View>: View {
+    public init(@ViewBuilder title: () -> Title, @ViewBuilder icon: () -> Icon) {}
+    public var body: Never { fatalError() }
+}
+extension Label where Title == Text, Icon == Image { public init(_ title: String, systemImage: String) {} }
+
 // MARK: Shapes
 public protocol Shape: View {}
 extension Shape {

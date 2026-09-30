@@ -2,41 +2,54 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject var engine: GameEngine
-    @State private var started = false
+    @State private var showSettings = false
+    @State private var showGuide = false
 
     var body: some View {
-        ZStack {
-            GameSceneView(container: engine.container)
-                .ignoresSafeArea()
+        GeometryReader { geo in
+            let s = min(geo.size.width / 1180, geo.size.height / 820)
+            ZStack {
+                GameSceneView(container: engine.container)
+                    .ignoresSafeArea()
 
-            if !started {
-                VStack(spacing: 18) {
-                    Text("CARDBOARD LAB")
-                        .font(.system(size: 64, weight: .black, design: .rounded))
-                        .foregroundStyle(Color.labCardboardLight)
-                        .shadow(color: .labInk, radius: 0, x: 0, y: 5)
-                    Text("CUT · FOLD · GLUE · CREATE")
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
-                        .tracking(4)
-                        .foregroundStyle(Color.labPaper)
-                    Button {
-                        started = true
-                        Task { try? await engine.showWorkbench(stock: .plain) }
-                    } label: {
-                        Text("Start crafting")
-                            .font(.system(size: 24, weight: .heavy, design: .rounded))
-                            .foregroundStyle(Color.labPaper)
-                            .padding(.horizontal, 34)
-                            .padding(.vertical, 16)
-                            .background(Capsule().fill(Color.labRed))
-                            .overlay(Capsule().stroke(Color.labInk, lineWidth: 3))
-                    }
-                    .buttonStyle(.plain)
+                if engine.screen == .menu && !engine.transitioning {
+                    MenuView(showSettings: $showSettings, showGuide: $showGuide)
+                        .transition(.opacity)
                 }
-                .transition(.opacity)
+
+                if engine.screen == .crafting {
+                    CraftOverlay(scale: s)
+                        .transition(.opacity)
+                }
+
+                ToastLayer(scale: s, defaultY: geo.size.height * 0.34)
+
+                if showSettings {
+                    SettingsPanel(isPresented: $showSettings) { showGuide = true }
+                        .transition(.opacity)
+                }
             }
+            .animation(.easeInOut(duration: 0.35), value: engine.screen)
+            .animation(.easeInOut(duration: 0.35), value: engine.transitioning)
+            .animation(.easeInOut(duration: 0.25), value: showSettings)
         }
-        .animation(.easeInOut(duration: 0.3), value: started)
         .onAppear { engine.start() }
+    }
+}
+
+/// Crafting overlay (the full HUD arrives with the crafting session).
+struct CraftOverlay: View {
+    @EnvironmentObject var engine: GameEngine
+    let scale: CGFloat
+
+    var body: some View {
+        VStack {
+            HStack {
+                HomeButton(size: 64 * scale) { engine.goToMenu() }
+                Spacer()
+            }
+            Spacer()
+        }
+        .padding(24 * scale)
     }
 }

@@ -60,6 +60,24 @@ public struct MeshData {
         }
     }
 
+    /// Compact copy containing only the listed parts (in the given order).
+    public func extract(parts wanted: [Int]) -> MeshData {
+        var m = MeshData(parts: wanted.count)
+        var remap: [UInt32: UInt32] = [:]
+        for (k, pi) in wanted.enumerated() where pi < parts.count {
+            for idx in parts[pi] {
+                if let r = remap[idx] {
+                    m.parts[k].append(r)
+                } else {
+                    let r = m.vertex(positions[Int(idx)], normals[Int(idx)], uvs[Int(idx)])
+                    remap[idx] = r
+                    m.parts[k].append(r)
+                }
+            }
+        }
+        return m
+    }
+
     public func transformed(_ pose: Pose) -> MeshData {
         var m = MeshData(parts: parts.count)
         m.append(self, pose: pose)
