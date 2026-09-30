@@ -45,6 +45,27 @@ enum Props {
         return root
     }
 
+    // MARK: Bone folder — scoring tool. Origin at the rounded tip, body along +x.
+
+    static func boneFolder() -> SCNNode {
+        let root = SCNNode()
+        root.name = "boneFolder"
+        var outline: [V2] = []
+        for i in 0...6 {
+            let a = Float.pi / 2 + Float(i) / 6 * Float.pi
+            outline.append(V2(0.22 + cos(a) * 0.22, sin(a) * 0.22))
+        }
+        outline.append(V2(3.4, -0.24))
+        outline.append(V2(3.4, 0.24))
+        let ring = outline.reversed().map { V2($0.x, $0.y) }
+        let mesh = MeshBuilder.extrudeXY(Array(ring), depth: 0.1)
+            .transformed(Pose(rot: Quat(axis: V3(1, 0, 0), angle: -.pi / 2), pos: V3(0, 0.05, 0)))
+        root.addChildNode(part(mesh, Palette.paper, outline: 0.025))
+        let band = MeshBuilder.box(V3(0.5, 0.12, 0.5), center: V3(2.6, 0.05, 0))
+        root.addChildNode(part(band, Palette.blue, outline: 0.015))
+        return root
+    }
+
     // MARK: Glue bottle — origin at the nozzle tip, body up (+y).
 
     static func glueBottle() -> SCNNode {

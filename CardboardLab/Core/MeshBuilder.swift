@@ -190,6 +190,42 @@ public enum MeshBuilder {
         }
     }
 
+    /// Low-poly tube swept along a polyline (glue beads, arrows). `normal` is the surface
+    /// normal the tube lies on; `flatten` squashes the cross-section along it.
+    public static func sweep(_ pts: [V3], radius: Float, sides: Int = 6, normal: V3 = V3(0, 1, 0),
+                             flatten: Float = 1, into m: inout MeshData, part: Int = 0, caps: Bool = true) {
+        guard pts.count > 1 else { return }
+        var rings: [[V3]] = []
+        for i in 0..<pts.count {
+            let a = pts[max(i - 1, 0)], b = pts[min(i + 1, pts.count - 1)]
+            var t = (b - a).unit
+            if t.len < 1e-6 { t = V3(1, 0, 0) }
+            var side = normal.crossp(t)
+            if side.len < 1e-4 { side = V3(0, 0, 1).crossp(t) }
+            side = side.unit
+            let upv = t.crossp(side).unit
+            rings.append((0..<sides).map { k in
+                let ang = Float(k) / Float(sides) * 2 * .pi
+                return pts[i] + side * (cos(ang) * radius) + upv * (sin(ang) * radius * flatten)
+            })
+        }
+        for i in 0..<(rings.count - 1) {
+            for k in 0..<sides {
+                let k2 = (k + 1) % sides
+                let mid = (rings[i][k] + rings[i][k2] + rings[i + 1][k] + rings[i + 1][k2]) / 4
+                let centre = (pts[i] + pts[i + 1]) / 2
+                m.quad(part, rings[i][k], rings[i][k2], rings[i + 1][k2], rings[i + 1][k], facing: (mid - centre).unit)
+            }
+        }
+        if caps {
+            for (ring, c, dir) in [(rings[0], pts[0], (pts[0] - pts[1]).unit),
+                                   (rings[rings.count - 1], pts[pts.count - 1], (pts[pts.count - 1] - pts[pts.count - 2]).unit)] {
+                let tipPoint = c + dir * radius * 0.8
+                for k in 0..<sides { m.triangle(part, ring[k], ring[(k + 1) % sides], tipPoint, facing: dir) }
+            }
+        }
+    }
+
     /// Evenly spaced dashes along a segment (blue fold lines).
     public static func dashes(_ a: V3, _ b: V3, dash: Float = 0.2, gap: Float = 0.13, width: Float = 0.055,
                               normal: V3 = V3(0, 1, 0), into m: inout MeshData, part: Int = 0) {

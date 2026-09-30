@@ -13,10 +13,12 @@ final class Workspace {
     let tape = Props.tapeRoll()
     let ruler = Props.ruler()
     let pencil = Props.pencil()
+    let boneFolder = Props.boneFolder()
     private(set) var scraps: [SCNNode] = []
 
     /// Resting transforms of the tools that get picked up during crafting.
     let knifeRest = Pose(rot: Quat.euler(yaw: -0.95, pitch: 0, roll: 0.12), pos: V3(11.6, 0.32, 6.3))
+    let folderRest = Pose(rot: Quat(axis: V3(0, 1, 0), angle: -0.35), pos: V3(-12.4, 0.02, 5.6))
     let glueRest = Pose(rot: Quat(axis: V3(1, 0, 0), angle: .pi / 2), pos: V3(11.5, 0.65, 0.4))
 
     init() {
@@ -87,6 +89,9 @@ final class Workspace {
 
         knife.setPose(knifeRest)
         root.addChildNode(knife)
+
+        boneFolder.setPose(folderRest)
+        root.addChildNode(boneFolder)
 
         let stackA = Props.cardboardStack(width: 7, depth: 5.5, sheets: 3, stock: .plain, seed: 1)
         stackA.setPose(Pose(rot: Quat(axis: V3(0, 1, 0), angle: 0.25), pos: V3(-16.5, -matThickness, 8.8)))

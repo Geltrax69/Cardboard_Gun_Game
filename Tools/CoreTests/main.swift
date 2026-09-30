@@ -189,6 +189,16 @@ do {
         }
     }
     check(bad == 0, "\(bad) triangles with inconsistent winding")
+    var bead = MeshData()
+    MeshBuilder.sweep([V3(0, 0.05, 0), V3(1, 0.05, 0.1), V3(2, 0.05, 0)], radius: 0.07, sides: 6, flatten: 0.6, into: &bead)
+    var badBead = 0
+    var bi = 0
+    while bi < bead.parts[0].count {
+        let a = bead.positions[Int(bead.parts[0][bi])], b = bead.positions[Int(bead.parts[0][bi + 1])], c = bead.positions[Int(bead.parts[0][bi + 2])]
+        if (b - a).crossp(c - a).unit.dotp(bead.normals[Int(bead.parts[0][bi])]) < 0.99 { badBead += 1 }
+        bi += 3
+    }
+    check(bead.triangleCount == 2 * 6 * 2 + 12 && badBead == 0, "glue bead sweep: \(bead.triangleCount) tris, \(badBead) bad")
     let lathe = MeshBuilder.lathe([V2(0.5, 0), V2(0.5, 1), V2(0.2, 1.4), V2(0, 1.6)], sides: 8)
     check(lathe.triangleCount > 30, "lathe built")
     let hull = lathe.inflated(by: 0.05)
