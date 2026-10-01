@@ -7,8 +7,8 @@ import UIKit
 enum AppScreen: Equatable {
     case menu
     case crafting
-    /// Free Craft designer.
-    case designer
+    /// Free mode workbench.
+    case workshop
 }
 
 /// Floating feedback text ("+100 CRAFT", "Perfect fold", …).
@@ -42,7 +42,6 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
     let particles = Particles()
     let sound = SoundBoard()
     let tweener = Tweener()
-    let designer = DesignerStage()
     /// Everything that belongs to the current craft (sheet, pieces, guides).
     let craftRoot = SCNNode()
 
@@ -50,9 +49,7 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
     let profile = PlayerProfile()
     let icons = IconFactory()
     let hud = HUDModel()
-    let freeCraft = FreeCraftModel(saved: nil)
-    /// Weapon span the designer camera is currently framed for.
-    private var designerSpan: Float = 11
+    let workshop = WorkshopModel()
     private(set) var session: CraftSession?
     @Published private(set) var screen: AppScreen = .menu
     @Published private(set) var menuAnchors: [String: MenuAnchor] = [:]
@@ -96,7 +93,6 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
         craftRoot.name = "craft"
         scene.rootNode.addChildNode(craftRoot)
         scene.rootNode.addChildNode(particles.root)
-        scene.rootNode.addChildNode(designer.root)
         Workspace.installLights(in: scene)
 
         scnView.scene = scene
@@ -115,8 +111,6 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
         rig.set(menuShot())
         let profile = self.profile
         sound.isEnabled = { profile.soundOn }
-        freeCraft.load(profile.freeDesign)
-        freeCraft.onChange = { [weak self] design in self?.designChanged(design) }
     }
 
     // MARK: Loop
@@ -143,9 +137,6 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
         if screen == .menu {
             menu.update(time: time)
             refreshMenuAnchors()
-        }
-        if screen == .designer {
-            designer.update(time: time, dt: dt)
         }
         if toasts.contains(where: { time - $0.born > $0.life }) {
             toasts.removeAll { time - $0.born > $0.life }
@@ -182,21 +173,6 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
             handler(phase, p)
             return
         }
-        // Free Craft: one finger turns the weapon (FreeCraftView usually handles this).
-        if screen == .designer {
-            switch phase {
-            case .began:
-                idleOrbitLast = p
-                designerDragBegan()
-            case .moved:
-                if let last = idleOrbitLast { designerDrag(dx: p.x - last.x, dy: p.y - last.y) }
-                idleOrbitLast = p
-            case .ended, .cancelled:
-                idleOrbitLast = nil
-                designerDragEnded()
-            }
-            return
-        }
         // No tool in hand: one finger turns the view.
         guard cameraControlEnabled else { idleOrbitLast = nil; return }
         switch phase {
@@ -216,7 +192,7 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
     // MARK: Camera control (rotate / zoom the 3D view)
 
     /// Player camera control is available while crafting (not on the menu).
-    var cameraControlEnabled: Bool { (screen == .crafting || screen == .designer) && !guideVisible }
+    var cameraControlEnabled: Bool { (screen == .crafting || screen == .workshop) && !guideVisible }
 
     private func installCameraGestures() {
         let pan = UIPanGestureRecognizer(target: self, action: #selector(handleTwoFingerPan(_:)))
@@ -372,7 +348,7 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
     /// First knife ever: show the guide before crafting.
     func openProject(_ project: ProjectInfo) {
         if project.kind == .freeCraft {
-            openFreeCraft()
+            openWorkshop()
             return
         }
         guard profile.isUnlocked(project) else {
@@ -386,81 +362,31 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
         }
     }
 
-    // MARK: Free Craft
+    // MARK: Free mode
 
-    /// Opens the designer: the stacks fade away and the weapon appears on a turntable.
-    func openFreeCraft() {
+    /// Opens the free mode workbench: the stacks fade away and the bench takes over.
+    func openWorkshop() {
         guard screen == .menu, !transitioning else { return }
-        freeCraft.begin(level: profile.level)
-        designer.show()
-        designer.request(freeCraft.design, stock: profile.stock)
-        designerSpan = WeaponModel.span(freeCraft.design, stock: profile.stock)
-        screen = .designer
-        sound.play(.whoosh, volume: 0.6)
-        rig.glide(to: designerShot(span: designerSpan), duration: 1.0, tweener: tweener)
-        tweener.start(0.4) { [weak self] k in self?.menu.root.opacity = CGFloat(1 - k) }
-    }
-
-    func closeFreeCraft() {
-        guard screen == .designer, !transitioning else { return }
-        profile.saveFreeDesign(freeCraft.design)
-        designer.hide()
         transitioning = true
-        screen = .menu
-        sound.play(.tap)
-        menu.root.isHidden = false
-        rig.glide(to: menuShot(), duration: 1.0, tweener: tweener)
-        Task { @MainActor in
-            defer { transitioning = false }
-            try? await tweener.tween(0.45) { [weak self] k in self?.menu.root.opacity = CGFloat(k) }
+        screen = .workshop
+        sessionToken += 1
+        let token = sessionToken
+        let stock = profile.stock
+        sessionTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                self.clearCraft()
+                self.sound.play(.whoosh, volume: 0.6)
+                try await self.tweener.tween(0.4) { [weak self] k in self?.menu.root.opacity = CGFloat(1 - k) }
+                self.menu.root.isHidden = true
+                if self.sessionToken == token { self.transitioning = false }
+                let s = WorkshopSession(engine: self, model: self.workshop, stock: stock)
+                self.session = s
+                try await s.run()
+            } catch {
+                if self.sessionToken == token { self.transitioning = false }
+            }
         }
-    }
-
-    func designerDragBegan() { designer.beginDrag(time: time) }
-
-    func designerDrag(dx: Float, dy: Float) {
-        designer.drag(dx: dx, dy: dy, camera: rig.orbit, time: time)
-    }
-
-    func designerDragEnded() { designer.endDrag(time: time) }
-
-    /// Pinch: scale > 1 zooms in.
-    func designerPinch(_ scale: Float) {
-        rig.userPinch(scale)
-        syncViewAdjusted()
-    }
-
-    /// Back to the starting angle and zoom.
-    func resetDesignerView() {
-        designer.resetOrientation()
-        rig.resetUserView(tweener: tweener)
-        sound.play(.tap)
-    }
-
-    /// Builds the current Free Craft design.
-    func craftFreeDesign() {
-        guard screen == .designer, !transitioning else { return }
-        let design = freeCraft.design
-        profile.saveFreeDesign(design)
-        designer.hide()
-        startProject(.freeBuild(design))
-    }
-
-    private func designChanged(_ design: WeaponDesign) {
-        guard screen == .designer else { return }
-        designer.request(design, stock: profile.stock)
-        let span = WeaponModel.span(design, stock: profile.stock)
-        if abs(span - designerSpan) > designerSpan * 0.15 {
-            designerSpan = span
-            rig.glide(to: designerShot(span: span), duration: 0.6, tweener: tweener)
-        }
-    }
-
-    /// Hero view of the turntable, framed in the space left of the designer panel.
-    func designerShot(span: Float) -> OrbitCamera {
-        // The weapon turns freely, so frame its whole spinning sphere.
-        rig.framing(center: DesignerStage.center, size: V2(span + 2, max(7, span * 0.75 + 1.5)), view: .hero,
-                    insets: CameraRig.Insets(top: 0.17, bottom: 0.1, left: 0.02, right: 0.46))
     }
 
     /// Back to the menu, then straight into the same project with a fresh sheet.

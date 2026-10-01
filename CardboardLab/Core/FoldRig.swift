@@ -18,7 +18,9 @@ public struct FoldRig {
     }
 
     public static func hingePose(_ h: HingeDef, childCentroid: V2, angle: Float, thickness: Float) -> Pose {
-        let y: Float = h.kind == .valley ? thickness : 0
+        // Folding up hinges about the top face, folding down about the underside (the
+        // hinge kind only matters at angle 0, where there is no rotation anyway).
+        let y: Float = angle > 0 ? thickness : (angle < 0 ? 0 : (h.kind == .valley ? thickness : 0))
         let d = (h.b - h.a).unit
         var n = d.perp
         if (childCentroid - h.a).dotp(n) < 0 { n = n * -1 }

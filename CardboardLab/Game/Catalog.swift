@@ -9,7 +9,7 @@ struct ProjectInfo: Identifiable, Equatable {
         case weapon
         /// The pistol or rifle, built by `GunSession`.
         case gun
-        /// Opens the Free Craft designer.
+        /// Opens the free mode workbench.
         case freeCraft
         case comingSoon
     }
@@ -58,13 +58,6 @@ struct ProjectInfo: Identifiable, Equatable {
                     campaignIndex: index)
     }
 
-    /// A Free Craft creation, ready to build.
-    static func freeBuild(_ d: WeaponDesign) -> ProjectInfo {
-        var design = d
-        design.id = "free"
-        return ProjectInfo(id: "free", name: design.name, kind: .weapon, design: design, reward: 120, blurb: design.summary)
-    }
-
     /// Every campaign project in unlock order.
     static let campaign: [ProjectInfo] = Campaign.order.enumerated().compactMap { i, id in
         if let d = WeaponDesign.byID(id) { return weapon(d, index: i) }
@@ -72,8 +65,8 @@ struct ProjectInfo: Identifiable, Equatable {
         return nil
     }
     static let knife = campaign[0]
-    static let freeCraft = ProjectInfo(id: "freeCraft", name: "Free Craft", kind: .freeCraft,
-                                       blurb: "Design your own blade, guard and grip")
+    static let freeCraft = ProjectInfo(id: "freeCraft", name: "Free Mode", kind: .freeCraft,
+                                       blurb: "Unlimited cardboard: draw, cut, fold, paint")
 
     static func byID(_ id: String) -> ProjectInfo? { campaign.first { $0.id == id } }
 }

@@ -36,34 +36,6 @@ func runWeaponTests(outDir: String) {
         designs.append(d)
     }
 
-    // Free Craft: random designs only use parts unlocked at their level, and every one builds.
-    func checkUnlocked(_ d: WeaponDesign, _ level: Int, _ tag: String) {
-        check(FreeCraftParts.level(of: d.kind) <= level, "\(tag) kind locked")
-        if let b = d.blade {
-            check(FreeCraftParts.level(of: b.build) <= level && FreeCraftParts.level(of: b.tip) <= level, "\(tag) blade locked")
-            check(b.edge == .plain || FreeCraftParts.serratedLevel <= level, "\(tag) serrated locked")
-            check(!b.fuller || FreeCraftParts.fullerLevel <= level, "\(tag) fuller locked")
-            check(b.tip.forRidge == (b.build == .ridge), "\(tag) tip matches build")
-        }
-        for c in [d.guardClip, d.endClip].compactMap({ $0 }) {
-            check(FreeCraftParts.level(of: c.style) <= level, "\(tag) \(c.style) locked")
-        }
-        check(d.kind == .axe ? (d.blade == nil && d.endClip?.style.isAxeHead == true) : d.blade != nil, "\(tag) axe/blade consistency")
-        check(d.id == "free" && WeaponDesign.byID(d.id) == nil, "\(tag) free id")
-    }
-    for level in 1...13 {
-        for k in 0..<12 {
-            let d = FreeCraftParts.random(level: level, using: &rng)
-            checkUnlocked(d, level, "random L\(level)#\(k)")
-            designs.append(d)
-        }
-        for c in WeaponDesign.campaign {
-            checkUnlocked(FreeCraftParts.clamp(c, level: level), level, "clamp \(c.id) L\(level)")
-        }
-    }
-    check(FreeCraftParts.level(of: .flame) == 9 && FreeCraftParts.level(of: .axe) == 8 && FreeCraftParts.level(of: .laminate) == 6,
-          "unlock levels follow the campaign")
-
     var worstSheet = V2(0, 0)
     for (index, design) in designs.enumerated() {
         for t: Float in [0.14, 0.2] {

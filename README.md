@@ -3,8 +3,8 @@
 A tactile, low-poly 3D **iPad** crafting game written in **Swift** (SwiftUI + SceneKit).
 Cut cardboard along red lines, score and fold along blue dashed lines, glue tabs,
 assemble, sharpen and detail real 3D cardboard weapons. Twelve knives, daggers, swords
-and axes plus a pistol and a rifle unlock as you level up, and Free Craft lets you design
-your own.
+and axes plus a pistol and a rifle unlock as you level up, and Free Mode is an open
+workbench with unlimited cardboard where you can make anything.
 
 > CUT → HANDLE → BLADE → FITTINGS → ASSEMBLE → SHARPEN → FINISHED
 
@@ -65,24 +65,26 @@ the top level for testing.
 The finish card shows **LEVEL UP!** and what it unlocked; new weapons wear a **NEW**
 badge on the menu.
 
-### Free Craft
+### Free Mode: make anything
 
-**Free Craft** (top of the Weapons list) is a designer for your own weapons. The weapon
-floats above the mat and updates live as you pick parts. Drag in any direction to turn
-it over and see it from the top, the bottom or any side, flick to spin it, pinch to
-zoom, and tap ↺ to reset the view:
+**Free Mode** (top of the Weapons list) is an open workbench with unlimited cardboard.
+There are no parts to pick: you draw, cut, fold, paint and build whatever you like.
 
-- **Type**: knife, dagger, sword or axe
-- **Blade**: double edge (ridge) or single edge (laminated), tip shape, plain or
-  serrated edge, length, width, curve, fuller groove
-- **Guard** and **pommel**, or an **axe head**, with sizes
-- **Handle / shaft** length, grip bands, lanyard hole
+| Tool | How it works |
+|---|---|
+| **Cut** | Choose *Freehand*, *Straight lines* (tap the corners, tap the first one again to close), *Rectangle* or *Circle* and draw on a sheet. The shape turns into a red cut line; trace it with the craft knife, or switch on *Quick cut* and the knife does it. The piece pops out and the sheet keeps the hole. |
+| **Fold line** | Drag a line across any piece: it becomes a blue dashed crease, scored by the bone folder. Lines may run through corners or along earlier creases (box nets work), but can't cut across another fold. |
+| **Fold** | Grab the flap beside a crease and drag it up or down to any angle (it snaps to 15° steps near them; 90° and 180° are *Perfect folds*). |
+| **Paint** | A full colour wheel (hue round the rim, saturation toward the centre), a brightness slider, ready-made shades and your recent colours. Tap or brush over faces — top or underside — or switch to *Whole piece*. Painting a sheet colours every piece cut from it. |
+| **Move** | Drag pieces around the table. Tap one for Turn, Tilt, Roll, Up, Down, Flip, To mat, Copy, Unglue and Delete. |
+| **Glue** | Tap a piece, then the piece to stick it onto: they move together from then on. |
+| **Look** | Drag to slide around the table; two fingers turn the view, pinch zooms. |
 
-Every part unlocks at the level of the first campaign weapon that uses it (flame tips at
-level 9 with the Flame Dagger, axes at level 8, …; `Core/FreeCraft.swift`), so the
-designer grows as you level up. **Surprise me** rolls a random design from your unlocked
-parts. **Craft it!** builds it with the normal six-stage session for 60 XP, and the last
-design is remembered.
+**New sheet** drops a fresh sheet on the next free spot of the table, as often as you
+like. **Undo** steps back through every change, **Top view / 3D view** switches the
+camera, and the whole bench is saved automatically (`WorkshopStore`) so you can keep
+adding detail next time. The model lives in `Core/Workshop.swift` (shapes, creases,
+colours, glue — all unit tested); `Game/WorkshopSession.swift` runs the tools.
 
 ### A weapon, step by step
 
@@ -126,14 +128,14 @@ CardboardLab/
                 WeaponDesign (parameters) · BladeShapes (blade outlines)
                 WeaponBlueprint (design → pieces, folds, assembly, glue & bevels)
                 BoxNet (box and fin nets) · GunBlueprint · Progression (campaign, XP)
-                FreeCraft (parts and unlock levels) · Stock
+                Workshop (free mode: cutting, creasing, colours, glue) · Stock
   Scene/      SceneKit building blocks: palette, materials, procedural textures,
               low-poly props, workspace, menu stacks, PieceNode, TemplateSheet,
               cut/score/glue visuals, particles, icon & guide renderer
   Engine/     GameEngine (loop, input, screens), CameraRig, HUD model, SoundBoard,
               guide overlay (arrows, dotted guides, ghost finger)
   Game/       Crafting sessions and interactions: CraftSession, BuildSession (shared
-              moves), WeaponSession, GunSession, FreeCraftModel,
+              moves), WeaponSession, GunSession, WorkshopSession, WorkshopModel,
               TraceInteraction (cut/score/glue), FoldInteraction, PlaceInteraction,
               GhostHint, PlayerProfile, Catalog
   UI/         SwiftUI: menu, crafting HUD, guide, components

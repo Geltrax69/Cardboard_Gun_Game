@@ -274,7 +274,7 @@ private struct ProjectCard: View {
     private var status: String {
         switch project.kind {
         case .comingSoon: return "Coming soon"
-        case .freeCraft: return "Unlocks parts as you level up"
+        case .freeCraft: return "Make anything you like"
         case .weapon, .gun:
             guard unlocked else { return "Reach level \(project.level)" }
             if crafted > 0 { return "Crafted ×\(crafted) · \(project.steps) steps" }

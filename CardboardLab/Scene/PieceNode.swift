@@ -18,6 +18,8 @@ final class PieceNode {
     private(set) var creaseNodes: [String: SCNNode] = [:]
     private var bodyMeshes: [String: MeshData] = [:]
     private let materials: CardboardMaterials
+    /// Painted face colours per panel (free mode).
+    private var paint: [String: (top: UIColor?, under: UIColor?)] = [:]
 
     /// World transform of the piece frame.
     var pose: Pose {
@@ -137,8 +139,19 @@ final class PieceNode {
         if let color {
             node.geometry?.materials = [Mat.lambert(color), Mat.lambert(color), materials.side]
         } else {
-            node.geometry?.materials = [materials.top, materials.under, materials.side]
+            node.geometry?.materials = baseMaterials(panel)
         }
+    }
+
+    /// Paints a panel's printed face and/or underside (nil keeps the bare cardboard).
+    func setPaint(_ panel: String, top: UIColor?, under: UIColor?) {
+        paint[panel] = (top, under)
+        panelNodes[panel]?.geometry?.materials = baseMaterials(panel)
+    }
+
+    private func baseMaterials(_ panel: String) -> [SCNMaterial] {
+        let p = paint[panel]
+        return [p?.top.map { Mat.lambert($0) } ?? materials.top, p?.under.map { Mat.lambert($0) } ?? materials.under, materials.side]
     }
 
     /// Translucent copy of the piece in its current fold state (target outlines).

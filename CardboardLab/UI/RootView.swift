@@ -21,8 +21,8 @@ struct RootView: View {
                         .transition(.opacity)
                 }
 
-                if engine.screen == .designer {
-                    FreeCraftView(scale: s)
+                if engine.screen == .workshop && !engine.transitioning {
+                    WorkshopView(scale: s)
                         .transition(.opacity)
                 }
 

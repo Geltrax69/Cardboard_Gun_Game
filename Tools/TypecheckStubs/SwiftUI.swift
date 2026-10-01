@@ -57,10 +57,25 @@ public struct Color: ShapeStyle, Equatable {
     public init(uiColor: UIColor) {}
     public init(red: Double, green: Double, blue: Double, opacity: Double = 1) {}
     public init(white: Double, opacity: Double = 1) {}
+    public init(hue: Double, saturation: Double, brightness: Double, opacity: Double = 1) {}
     public static let white = Color(white: 1), black = Color(white: 0), clear = Color(white: 0, opacity: 0)
     public func opacity(_ o: Double) -> Color { self }
 }
 extension Color: View { public var body: Never { fatalError() } }
+public struct Gradient { public init(colors: [Color]) {} }
+public struct AngularGradient: ShapeStyle, View {
+    public init(gradient: Gradient, center: UnitPoint, startAngle: Angle = Angle(degrees: 0), endAngle: Angle = Angle(degrees: 360)) {}
+    public init(colors: [Color], center: UnitPoint) {}
+    public var body: Never { fatalError() }
+}
+public struct RadialGradient: ShapeStyle, View {
+    public init(colors: [Color], center: UnitPoint, startRadius: CGFloat, endRadius: CGFloat) {}
+    public var body: Never { fatalError() }
+}
+public struct LinearGradient: ShapeStyle, View {
+    public init(colors: [Color], startPoint: UnitPoint, endPoint: UnitPoint) {}
+    public var body: Never { fatalError() }
+}
 extension ShapeStyle where Self == Color {
     public static var white: Color { Color.white }
     public static var black: Color { Color.black }

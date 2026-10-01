@@ -10,6 +10,8 @@ final class CameraRig {
         case topDown, threeQuarter, hero, menu
         /// Low, from the player's side: for drawing on the +z faces of a held build.
         case side
+        /// Free mode: tilted enough to see builds in 3D, flat enough to draw on sheets.
+        case workshop
 
         var polar: Float {
             switch self {
@@ -18,6 +20,7 @@ final class CameraRig {
             case .hero: return 0.62
             case .menu: return 0.52
             case .side: return 1.05
+            case .workshop: return 0.5
             }
         }
 
@@ -28,6 +31,7 @@ final class CameraRig {
             case .hero: return 0.42
             case .menu: return 0
             case .side: return -0.12
+            case .workshop: return -0.18
             }
         }
     }
@@ -147,6 +151,17 @@ final class CameraRig {
         userYaw -= dx * 0.0085
         let pitch = userPitch + dy * 0.0065
         userPitch = clampf(pitch, CameraRig.minPolar - base.polar, CameraRig.maxPolar - base.polar)
+        apply()
+    }
+
+    /// Slides the view across the table by a finger movement (points): the table
+    /// follows the finger.
+    func userPan(dx: Float, dy: Float) {
+        let o = orbit
+        let k = 2 * o.distance * tan(o.fovY / 2) / max(o.viewSize.y, 1)
+        var ahead = V3(o.up.x - o.back.x, 0, o.up.z - o.back.z)
+        ahead = ahead.len > 1e-4 ? ahead.unit : V3(0, 0, -1)
+        base.target = base.target - o.right * (dx * k) + ahead * (dy * k)
         apply()
     }
 

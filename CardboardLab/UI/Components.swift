@@ -293,3 +293,47 @@ struct ToastLayer: View {
         .allowsHitTesting(false)
     }
 }
+
+/// Chunky slider: label and value on top, a draggable track below.
+struct LabSlider: View {
+    let title: String
+    let value: Float
+    let range: ClosedRange<Float>
+    let format: (Float) -> String
+    let scale: CGFloat
+    let onChange: (Float) -> Void
+
+    var body: some View {
+        let s = scale
+        let span = max(range.upperBound - range.lowerBound, 1e-4)
+        let k = CGFloat(min(1, max(0, (value - range.lowerBound) / span)))
+        VStack(alignment: .leading, spacing: 6 * s) {
+            HStack {
+                Text(title).font(LabFont.heavy(14 * s)).foregroundStyle(Color.labPaper)
+                Spacer()
+                Text(format(value)).font(LabFont.heavy(14 * s)).monospacedDigit().foregroundStyle(Color.labYellow)
+            }
+            GeometryReader { g in
+                let w = g.size.width
+                let knob = 28 * s
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.labInk)
+                        .frame(height: 12 * s)
+                    Capsule().fill(Color.labBlue)
+                        .frame(width: max(12 * s, (w - knob) * k + knob / 2), height: 12 * s)
+                    Circle().fill(Color.labPaper)
+                        .overlay(Circle().stroke(Color.labInk, lineWidth: 2.5))
+                        .frame(width: knob, height: knob)
+                        .offset(x: (w - knob) * k)
+                }
+                .frame(height: knob)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0).onChanged { v in
+                    let f = Float(min(1, max(0, (v.location.x - knob / 2) / max(w - knob, 1))))
+                    onChange(range.lowerBound + span * f)
+                })
+            }
+            .frame(height: 28 * s)
+        }
+    }
+}
