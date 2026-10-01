@@ -2,9 +2,10 @@
 
 A tactile, low-poly 3D **iPad** crafting game written in **Swift** (SwiftUI + SceneKit).
 Cut cardboard along red lines, score and fold along blue dashed lines, glue tabs,
-assemble, sharpen and detail real 3D cardboard weapons. Twelve knives, daggers, swords
-and axes plus a pistol and a rifle unlock as you level up, and Free Mode is an open
-workbench with unlimited cardboard where you can make anything.
+assemble, sharpen and detail real 3D cardboard weapons. Thirty-two knives, daggers,
+swords and axes and ten guns — pistols, a revolver, rifles, an SMG, a shotgun and a
+sniper rifle — unlock as you level up, and Free Mode is an open workbench with
+unlimited cardboard where you can make anything.
 
 > CUT → HANDLE → BLADE → FITTINGS → ASSEMBLE → SHARPEN → FINISHED
 
@@ -58,6 +59,41 @@ again if you pause. You can turn hints off in Settings.
 | 12 | Longsword | 11.5-unit ridge blade, fuller, long grip |
 | 13 | Katana | Curved tanto-tip blade, disc guard, four wraps |
 | 14 | Battle Axe | Double-bit head on a long shaft |
+| 15 | **Compact Pistol** | Short slide, stubby grip |
+| 16 | Hunting Knife | Laminated clip point, bar guard, two bands |
+| 17 | Stiletto | Needle ridge blade, slim handle |
+| 18 | Gladius | Wide leaf blade, disc guard, ball pommel |
+| 19 | **Revolver** | Frame with the barrel pushed through it, raked grip, hammer, fluted cylinder |
+| 20 | Tomahawk | Small bit on a long, banded shaft |
+| 21 | Tanto | Straight tanto-tip blade, disc guard, three wraps |
+| 22 | Dirk | Long drop-point blade with a fuller |
+| 23 | **SMG** | Short barrel, stubby stock, long magazine |
+| 24 | Cutlass | Curved blade, cup guard |
+| 25 | Machete | Long, wide laminated blade, lanyard hole |
+| 26 | Main Gauche | Parrying dagger with a wide spiked guard |
+| 27 | **Carbine** | Short barrel, iron sights, forward-raked magazine |
+| 28 | Rapier | 12-unit needle blade, cup guard |
+| 29 | Hatchet | Short shaft, single bit |
+| 30 | Cleaver | Square laminated blade |
+| 31 | **Machine Pistol** | Magazine in front of the trigger guard |
+| 32 | Broadsword | Wide ridge blade with a fuller |
+| 33 | Kukri | Strongly curved, wide blade |
+| 34 | Wakizashi | Short curved tanto blade, three wraps |
+| 35 | **Shotgun** | Wide barrel with pump grooves, long stock |
+| 36 | Falchion | Wide single-edged blade, flaring to the tip |
+| 37 | Survival Knife | Serrated clip point, spiked guard and pommel |
+| 38 | **Target Pistol** | Long, slim slide |
+| 39 | Claymore | 12-unit blade, spiked guard, long grip |
+| 40 | Bearded Axe | Bearded head on a long shaft |
+| 41 | Flamberge | Long wavy flame blade |
+| 42 | **Sniper Rifle** | Long barrel, big scope, long stock, short magazine |
+
+Levels 15 and up were added after the first fourteen, so existing saves keep every
+unlock. The menu's project list has filter chips (All · Knives · Daggers · Swords ·
+Axes · Guns). Blades are `WeaponDesign`s; guns are `GunSpec`s (`Core/GunBlueprint.swift`)
+— sizes of the body, barrel, stock, grip, magazine and scope and which sights it has —
+built by one generator, so a new gun is a few lines of numbers. Every blade and gun is
+validated on every board thickness by the core tests.
 
 The order lives in `Campaign.order` (`Core/Progression.swift`). Crafting a project for
 the first time earns exactly the XP needed for the next level, which unlocks the next
@@ -130,17 +166,17 @@ the HUD shows 5 or 6 steps.
 The **How to build the Knife** guide (menu → *How to build*, the **?** button while
 crafting, or Settings) shows all eight stages rendered from the real 3D pieces.
 
-### The pistol and rifle, step by step
+### A gun, step by step
 
 Guns are boxes and fins (`Core/GunBlueprint.swift`, built by `Game/GunSession.swift`):
 
 | Stage | What happens |
 |---|---|
-| Cut | Cut every box net and fin out, punch the muzzle, the finger hole round the trigger and the rifle's barrel slot. |
-| Body | Fold the slide / receiver box crease by crease, with a front cap holding the muzzle (pistol) or the barrel slot (rifle). Glue the tab, close the lid. |
-| Parts | Every other box (grip, barrel, stock, magazine, scope) is scored for you and folds up with **one drag**; then glue and close. Fins (trigger guard, sights) get their tab scored and glued. |
-| Assemble | The body lifts up. Push the barrel through the slot, fit the stock, hang the grip and magazine underneath, and drop on the trigger guard and sights: their glued tabs fold over and stick. |
-| Details | Draw the ejection port, slide serrations, magazine ridges and grip texture with a **marker** along yellow dotted guides. |
+| Cut | Cut every box net and fin out, punch the muzzle, the finger hole round the trigger and the barrel slot. |
+| Body | Fold the slide, frame or receiver box crease by crease, with a front cap holding the muzzle (pistols) or the barrel slot (revolver and long guns). Glue the tab, close the lid. |
+| Parts | Every other box (grip, barrel, stock, magazine, scope) is scored for you and folds up with **one drag**; then glue and close. Fins (trigger guard, sights, hammer) get their tab scored and glued. |
+| Assemble | The body lifts up. Push the barrel through the slot, fit the stock, hang the grip and magazine underneath, and drop on the trigger guard, sights and hammer: their glued tabs fold over and stick. |
+| Details | Draw the ejection port, slide serrations, cylinder flutes, pump grooves, magazine ridges and grip texture with a **marker** along yellow dotted guides. |
 
 ## Project layout
 

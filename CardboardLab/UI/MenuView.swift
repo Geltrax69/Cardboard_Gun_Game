@@ -7,6 +7,7 @@ struct MenuView: View {
     @EnvironmentObject var profile: PlayerProfile
     @EnvironmentObject var icons: IconFactory
     @Binding var showSettings: Bool
+    @State private var category = ProjectCategory.all
 
     var body: some View {
         GeometryReader { geo in
@@ -52,6 +53,7 @@ struct MenuView: View {
                         .buttonStyle(PressableStyle())
                     }
                     LevelBar(scale: s)
+                    categoryChips(s)
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(spacing: 10 * s) {
                             ForEach(menuProjects) { project in
@@ -77,9 +79,33 @@ struct MenuView: View {
         }
     }
 
-    /// Campaign weapons in unlock order, then the guns still being designed.
+    /// Free Mode, then the campaign in unlock order, filtered by the chosen category.
     private var menuProjects: [ProjectInfo] {
-        [.freeCraft] + ProjectInfo.campaign
+        category == .all ? [.freeCraft] + ProjectInfo.campaign : ProjectInfo.campaign.filter { category.includes($0) }
+    }
+
+    private func categoryChips(_ s: CGFloat) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6 * s) {
+                ForEach(ProjectCategory.allCases, id: \.self) { c in
+                    let on = c == category
+                    let count = c == .all ? ProjectInfo.campaign.count : ProjectInfo.campaign.filter { c.includes($0) }.count
+                    Button {
+                        engine.sound.play(.tap)
+                        category = c
+                    } label: {
+                        Text("\(c.title) \(count)")
+                            .font(LabFont.heavy(13 * s))
+                            .foregroundStyle(on ? Color.labInk : Color.labPaper)
+                            .padding(.horizontal, 10 * s)
+                            .frame(height: 30 * s)
+                            .background(Capsule().fill(on ? Color.labYellow : Color.labTable))
+                            .overlay(Capsule().stroke(on ? Color.labInk : Color.labMat, lineWidth: 1.5))
+                    }
+                    .buttonStyle(PressableStyle())
+                }
+            }
+        }
     }
 
     @ViewBuilder

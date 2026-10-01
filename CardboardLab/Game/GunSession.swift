@@ -1,11 +1,11 @@
 import SceneKit
 import UIKit
 
-/// Builds the pistol or the rifle from its `GunBlueprint`:
+/// Builds any gun from its `GunBlueprint`:
 ///   CUT       — cut every box net and fin out of the sheet, punch the holes
-///   BODY      — score, fold, glue and close the slide / receiver box crease by crease
+///   BODY      — score, fold, glue and close the slide / frame / receiver crease by crease
 ///   PARTS     — the other boxes fold up with one drag each; fins get their tabs glued
-///   ASSEMBLE  — barrel, stock, grip, magazine, trigger guard, scope and sights go on
+///   ASSEMBLE  — barrel, stock, grip, magazine, trigger guard, scope, hammer and sights go on
 ///   DETAILS   — draw the ejection port, serrations and grip texture with a marker
 @MainActor
 final class GunSession: BuildSession {
@@ -146,13 +146,15 @@ final class GunSession: BuildSession {
     }
 
     private func mountText(_ part: GunPart) -> (String, String) {
+        let body = bp.body.name.lowercased()
         switch part.id {
-        case "barrel": return ("Slide the barrel in", "Push it through the square hole in the receiver.")
-        case "stock": return ("Fit the stock", "Drag the stock onto the back of the receiver.")
+        case "barrel": return ("Slide the barrel in", "Push it through the square hole in the \(body).")
+        case "stock": return ("Fit the stock", "Drag the stock onto the back of the \(body).")
         case "grip": return ("Attach the grip", "Drag the grip onto the glowing outline underneath.")
         case "magazine": return ("Load the magazine", "Drag the magazine into place in front of the trigger.")
-        case "guard": return ("Fit the trigger guard", "Drag it under the \(bp.body.name.lowercased()) — the tab folds over and sticks.")
-        case "scope": return ("Mount the scope", "Drag the scope onto the top of the receiver.")
+        case "guard": return ("Fit the trigger guard", "Drag it under the \(body) — the tab folds over and sticks.")
+        case "scope": return ("Mount the scope", "Drag the scope onto the top of the \(body).")
+        case "hammer": return ("Fit the hammer", "Drag it onto the back of the \(body) — the tab folds over and sticks.")
         default: return ("Add the \(part.name.lowercased())", "Drag it onto the glowing outline on top.")
         }
     }

@@ -285,9 +285,122 @@ public extension WeaponDesign {
         blade: BladeSpec(build: .laminate, tip: .hook, edge: .serrated, length: 5.4, width: 2.0, curve: 1.0, tangLength: 3.0),
         handleLength: 4.2, lanyardHole: true, endClip: ClipSpec(.knob, span: 0.9, depth: 0.55), wraps: [0.3])
 
-    /// Campaign order; unlock level = index + 1.
+    // MARK: More blades (levels 15+)
+
+    static let huntingKnife = WeaponDesign(
+        id: "huntingKnife", name: "Hunting Knife", kind: .knife,
+        blade: BladeSpec(build: .laminate, tip: .clip, length: 6.2, width: 2.1, curve: 0.2, tangLength: 3.2),
+        handleLength: 4.6, guardClip: ClipSpec(.bar, span: 1.3, depth: 0.4), wraps: [1.2, 2.6])
+
+    static let stiletto = WeaponDesign(
+        id: "stiletto", name: "Stiletto", kind: .dagger,
+        blade: BladeSpec(build: .ridge, tip: .needle, length: 7.4, width: 1.3, tangLength: 3.2),
+        handleLength: 4.4, handleWidth: 1.05, handleHeight: 0.9,
+        guardClip: ClipSpec(.bar, span: 1.7, depth: 0.4), endClip: ClipSpec(.knob, span: 0.85, depth: 0.55))
+
+    static let gladius = WeaponDesign(
+        id: "gladius", name: "Gladius", kind: .sword,
+        blade: BladeSpec(build: .ridge, tip: .leaf, length: 8.2, width: 2.6, tangLength: 3.6),
+        handleLength: 4.6, guardClip: ClipSpec(.disc, span: 1.6, depth: 0.7), endClip: ClipSpec(.knob, span: 1.25, depth: 0.85),
+        wraps: [1.4, 2.4])
+
+    static let tomahawk = WeaponDesign(
+        id: "tomahawk", name: "Tomahawk", kind: .axe, blade: nil,
+        handleLength: 8.6, handleWidth: 0.95, handleHeight: 0.85,
+        endClip: ClipSpec(.bit, span: 2.5, depth: 2.0), wraps: [0.6, 1.6, 2.6])
+
+    static let tantoKnife = WeaponDesign(
+        id: "tantoKnife", name: "Tanto", kind: .knife,
+        blade: BladeSpec(build: .laminate, tip: .tanto, length: 6.4, width: 1.9, tangLength: 3.2),
+        handleLength: 4.8, handleWidth: 1.15, guardClip: ClipSpec(.disc, span: 1.15, depth: 0.45), wraps: [1.0, 2.0, 3.0])
+
+    static let dirk = WeaponDesign(
+        id: "dirk", name: "Dirk", kind: .dagger,
+        blade: BladeSpec(build: .ridge, tip: .drop, length: 8.4, width: 1.8, tangLength: 3.4, fuller: true),
+        handleLength: 4.8, guardClip: ClipSpec(.flared, span: 1.6, depth: 0.45), endClip: ClipSpec(.diamond, span: 1.1, depth: 0.7),
+        wraps: [1.5, 2.5])
+
+    static let cutlass = WeaponDesign(
+        id: "cutlass", name: "Cutlass", kind: .sword,
+        blade: BladeSpec(build: .laminate, tip: .curved, length: 8.2, width: 2.4, curve: 0.45, tangLength: 3.4),
+        handleLength: 4.6, guardClip: ClipSpec(.disc, span: 1.8, depth: 0.8), endClip: ClipSpec(.knob, span: 0.95, depth: 0.55))
+
+    static let machete = WeaponDesign(
+        id: "machete", name: "Machete", kind: .knife,
+        blade: BladeSpec(build: .laminate, tip: .curved, length: 8.4, width: 2.6, curve: 0.15, tangLength: 3.4),
+        handleLength: 5.0, lanyardHole: true, endClip: ClipSpec(.knob, span: 0.9, depth: 0.5), wraps: [0.4, 1.4, 2.4])
+
+    static let mainGauche = WeaponDesign(
+        id: "mainGauche", name: "Main Gauche", kind: .dagger,
+        blade: BladeSpec(build: .ridge, tip: .spear, length: 7.4, width: 1.7, tangLength: 3.3),
+        handleLength: 4.4, guardClip: ClipSpec(.spiked, span: 2.8, depth: 0.5), endClip: ClipSpec(.knob, span: 1.0, depth: 0.6))
+
+    static let rapier = WeaponDesign(
+        id: "rapier", name: "Rapier", kind: .sword,
+        blade: BladeSpec(build: .ridge, tip: .needle, length: 12.0, width: 1.4, tangLength: 3.8),
+        handleLength: 5.0, handleWidth: 1.1, handleHeight: 0.9,
+        guardClip: ClipSpec(.disc, span: 1.9, depth: 0.8), endClip: ClipSpec(.knob, span: 1.1, depth: 0.7), wraps: [1.6, 2.6])
+
+    static let hatchet = WeaponDesign(
+        id: "hatchet", name: "Hatchet", kind: .axe, blade: nil,
+        handleLength: 6.6, handleWidth: 1.0, handleHeight: 0.9,
+        endClip: ClipSpec(.bit, span: 2.4, depth: 2.4), wraps: [0.5])
+
+    static let cleaver = WeaponDesign(
+        id: "cleaver", name: "Cleaver", kind: .knife,
+        blade: BladeSpec(build: .laminate, tip: .cleaver, length: 6.4, width: 3.1, tangLength: 3.2),
+        handleLength: 4.6, lanyardHole: true, wraps: [0.3, 1.5])
+
+    static let broadsword = WeaponDesign(
+        id: "broadsword", name: "Broadsword", kind: .sword,
+        blade: BladeSpec(build: .ridge, tip: .spear, length: 10.6, width: 2.9, tangLength: 3.8, fuller: true),
+        handleLength: 5.4, guardClip: ClipSpec(.flared, span: 2.9, depth: 0.6), endClip: ClipSpec(.diamond, span: 1.3, depth: 0.8),
+        wraps: [1.6, 2.8])
+
+    static let kukri = WeaponDesign(
+        id: "kukri", name: "Kukri", kind: .knife,
+        blade: BladeSpec(build: .laminate, tip: .curved, length: 7.2, width: 2.8, curve: 1.0, tangLength: 3.2),
+        handleLength: 4.8, guardClip: ClipSpec(.bar, span: 1.2, depth: 0.35), endClip: ClipSpec(.knob, span: 1.0, depth: 0.6),
+        wraps: [1.3, 2.3])
+
+    static let wakizashi = WeaponDesign(
+        id: "wakizashi", name: "Wakizashi", kind: .sword,
+        blade: BladeSpec(build: .laminate, tip: .tanto, length: 7.4, width: 1.8, curve: 0.3, tangLength: 3.4),
+        handleLength: 5.0, handleWidth: 1.15, guardClip: ClipSpec(.disc, span: 1.4, depth: 0.55), wraps: [1.3, 2.3, 3.3])
+
+    static let falchion = WeaponDesign(
+        id: "falchion", name: "Falchion", kind: .sword,
+        blade: BladeSpec(build: .laminate, tip: .cleaver, length: 8.4, width: 2.7, curve: 0.25, tangLength: 3.4),
+        handleLength: 4.8, guardClip: ClipSpec(.bar, span: 2.2, depth: 0.5), endClip: ClipSpec(.diamond, span: 1.1, depth: 0.7))
+
+    static let survivalKnife = WeaponDesign(
+        id: "survivalKnife", name: "Survival Knife", kind: .knife,
+        blade: BladeSpec(build: .laminate, tip: .clip, edge: .serrated, length: 6.8, width: 2.2, curve: 0.1, tangLength: 3.3),
+        handleLength: 4.8, guardClip: ClipSpec(.spiked, span: 1.7, depth: 0.45), endClip: ClipSpec(.spike, span: 0.9, depth: 0.7),
+        wraps: [1.2, 2.2])
+
+    static let claymore = WeaponDesign(
+        id: "claymore", name: "Claymore", kind: .sword,
+        blade: BladeSpec(build: .ridge, tip: .spear, length: 12.0, width: 2.5, tangLength: 4.2, fuller: true),
+        handleLength: 6.5, guardClip: ClipSpec(.spiked, span: 3.0, depth: 0.7), endClip: ClipSpec(.diamond, span: 1.4, depth: 0.9),
+        wraps: [1.6, 2.8, 4.0])
+
+    static let beardedAxe = WeaponDesign(
+        id: "beardedAxe", name: "Bearded Axe", kind: .axe, blade: nil,
+        handleLength: 9.6, handleWidth: 1.0, handleHeight: 0.95,
+        endClip: ClipSpec(.bearded, span: 3.6, depth: 3.2), wraps: [0.8, 2.0, 3.2])
+
+    static let flamberge = WeaponDesign(
+        id: "flamberge", name: "Flamberge", kind: .sword,
+        blade: BladeSpec(build: .ridge, tip: .flame, length: 11.6, width: 2.4, tangLength: 4.0),
+        handleLength: 6.2, guardClip: ClipSpec(.spiked, span: 3.0, depth: 0.6), endClip: ClipSpec(.spike, span: 1.2, depth: 0.85),
+        wraps: [1.6, 2.8, 4.0])
+
+    /// Campaign order of the blades and axes (guns sit in between, see `Campaign.order`).
     static let campaign: [WeaponDesign] = [
         .knife, .dagger, .kunai, .bowie, .shortSword, .handAxe, .flameDagger, .karambit, .scimitar, .longsword, .katana, .battleAxe,
+        .huntingKnife, .stiletto, .gladius, .tomahawk, .tantoKnife, .dirk, .cutlass, .machete, .mainGauche, .rapier, .hatchet,
+        .cleaver, .broadsword, .kukri, .wakizashi, .falchion, .survivalKnife, .claymore, .beardedAxe, .flamberge,
     ]
 
     static func byID(_ id: String) -> WeaponDesign? { campaign.first { $0.id == id } }

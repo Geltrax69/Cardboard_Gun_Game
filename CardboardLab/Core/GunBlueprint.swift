@@ -1,9 +1,140 @@
 import Foundation
 
+/// Every gun in the game. Each is a `GunSpec` — sizes of the boxes and which parts it
+/// has — built by the same generator.
 public enum GunKind: String, Codable, CaseIterable {
-    case pistol, rifle
+    // Pistols: a slide box with a raked grip.
+    case pistol, compact, targetPistol, machinePistol
+    // Revolver: a frame box with the barrel pushed through it.
+    case revolver
+    // Long guns: a receiver box with a barrel through its front, stock and grip.
+    case rifle, carbine, smg, shotgun, sniper
 
-    public var title: String { self == .pistol ? "Pistol" : "Rifle" }
+    public var title: String {
+        switch self {
+        case .pistol: return "Pistol"
+        case .compact: return "Compact Pistol"
+        case .targetPistol: return "Target Pistol"
+        case .machinePistol: return "Machine Pistol"
+        case .revolver: return "Revolver"
+        case .rifle: return "Rifle"
+        case .carbine: return "Carbine"
+        case .smg: return "SMG"
+        case .shotgun: return "Shotgun"
+        case .sniper: return "Sniper Rifle"
+        }
+    }
+
+    /// One line for the menu card.
+    public var blurb: String {
+        switch self {
+        case .pistol: return "Slide · raked grip · trigger guard · sights"
+        case .compact: return "Short slide · stubby grip · sights"
+        case .targetPistol: return "Long slim slide · sights"
+        case .machinePistol: return "Magazine in front of the trigger"
+        case .revolver: return "Frame · barrel through it · hammer"
+        case .rifle: return "Barrel · scope · stock · magazine"
+        case .carbine: return "Short barrel · iron sights · curved mag"
+        case .smg: return "Stubby stock · long magazine"
+        case .shotgun: return "Wide barrel · pump grooves · stock"
+        case .sniper: return "Long barrel · big scope · long stock"
+        }
+    }
+
+    public var spec: GunSpec { GunSpec.of(self) }
+}
+
+/// Sizes and parts of one gun. Boxes are inner sizes (W across, H up, L along the gun).
+public struct GunSpec {
+    public struct Box {
+        public var W: Float, H: Float, L: Float
+        public init(_ W: Float, _ H: Float, _ L: Float) { self.W = W; self.H = H; self.L = L }
+    }
+
+    /// A box hanging under the body (grip, magazine): `x` is where its top meets the
+    /// body, `rake` tips it back (negative forward).
+    public struct Hang {
+        public var box: Box
+        public var x: Float
+        public var rake: Float
+        public init(_ box: Box, x: Float, rake: Float) { self.box = box; self.x = x; self.rake = rake }
+    }
+
+    public enum Rear { case none, sight, hammer }
+
+    public var bodyID: String
+    public var bodyName: String
+    public var body: Box
+    /// Square barrel pushed through the body's front cap: width, length, length inside.
+    public var barrel: (W: Float, L: Float, insert: Float)?
+    /// Stock behind the body, drooping by `droop` radians.
+    public var stock: (box: Box, droop: Float)?
+    public var grip: Hang
+    public var magazine: Hang?
+    /// Scope on top: width (square), length, front at `x`.
+    public var scope: (W: Float, L: Float, x: Float)?
+    public var rear: Rear
+    /// Slide serrations (pistols), cylinder flutes (revolver) or pump grooves (shotgun).
+    public var bodyGrooves: String?
+    public var barrelGrooves: Bool
+
+    static func of(_ kind: GunKind) -> GunSpec {
+        let slide = ("slide", "Slide"), receiver = ("receiver", "Receiver")
+        switch kind {
+        case .pistol:
+            return GunSpec(slide, Box(1.3, 1.35, 7.6), grip: Hang(Box(1.25, 1.55, 4.4), x: 7.6 - 2.05, rake: radians(15)),
+                           rear: .sight, bodyGrooves: "Add the slide serrations")
+        case .compact:
+            return GunSpec(slide, Box(1.25, 1.25, 6.0), grip: Hang(Box(1.2, 1.45, 3.4), x: 6.0 - 2.0, rake: radians(12)),
+                           rear: .sight, bodyGrooves: "Add the slide serrations")
+        case .targetPistol:
+            return GunSpec(slide, Box(1.1, 1.25, 9.6), grip: Hang(Box(1.1, 1.35, 4.6), x: 9.6 - 2.1, rake: radians(15)),
+                           rear: .sight, bodyGrooves: "Add the slide serrations")
+        case .machinePistol:
+            return GunSpec(slide, Box(1.3, 1.4, 8.2), grip: Hang(Box(1.2, 1.5, 4.0), x: 8.2 - 2.0, rake: radians(16)),
+                           magazine: Hang(Box(1.0, 1.2, 3.6), x: 0.8, rake: radians(-4)),
+                           rear: .sight, bodyGrooves: "Add the slide serrations")
+        case .revolver:
+            return GunSpec(("frame", "Frame"), Box(1.7, 1.6, 4.4), barrel: (0.62, 6.0, 1.7),
+                           grip: Hang(Box(1.2, 1.25, 3.8), x: 2.5, rake: radians(20)),
+                           rear: .hammer, bodyGrooves: "Flute the cylinder")
+        case .rifle:
+            return GunSpec(receiver, Box(1.5, 1.7, 7.2), barrel: (0.62, 9.0, 2.4), stock: (Box(1.35, 2.3, 5.2), radians(6)),
+                           grip: Hang(Box(1.15, 1.45, 3.6), x: 7.2 - 2.5, rake: radians(16)),
+                           magazine: Hang(Box(1.0, 1.35, 3.1), x: 0.9, rake: radians(-10)), scope: (0.75, 4.4, 1.6), rear: .none)
+        case .carbine:
+            return GunSpec(receiver, Box(1.4, 1.6, 6.6), barrel: (0.58, 6.6, 2.2), stock: (Box(1.3, 2.0, 4.4), radians(5)),
+                           grip: Hang(Box(1.1, 1.4, 3.4), x: 6.6 - 2.2, rake: radians(18)),
+                           magazine: Hang(Box(0.95, 1.3, 3.4), x: 0.5, rake: radians(-20)), rear: .sight)
+        case .smg:
+            return GunSpec(receiver, Box(1.4, 1.6, 6.0), barrel: (0.55, 4.6, 2.0), stock: (Box(1.1, 1.5, 3.0), radians(3)),
+                           grip: Hang(Box(1.1, 1.4, 3.3), x: 6.0 - 2.0, rake: radians(14)),
+                           magazine: Hang(Box(0.9, 1.1, 4.6), x: 0.4, rake: radians(-3)), rear: .sight)
+        case .shotgun:
+            return GunSpec(receiver, Box(1.7, 1.6, 6.4), barrel: (0.82, 10.0, 2.2), stock: (Box(1.35, 2.4, 5.6), radians(7)),
+                           grip: Hang(Box(1.15, 1.45, 3.4), x: 6.4 - 2.2, rake: radians(18)), rear: .none, barrelGrooves: true)
+        case .sniper:
+            return GunSpec(receiver, Box(1.4, 1.6, 7.8), barrel: (0.58, 11.0, 2.6), stock: (Box(1.3, 2.4, 6.4), radians(5)),
+                           grip: Hang(Box(1.1, 1.45, 3.5), x: 7.8 - 2.3, rake: radians(18)),
+                           magazine: Hang(Box(0.95, 1.1, 2.2), x: 1.4, rake: 0), scope: (0.95, 6.2, 1.0), rear: .none)
+        }
+    }
+
+    init(_ body: (String, String), _ box: Box, barrel: (W: Float, L: Float, insert: Float)? = nil,
+         stock: (box: Box, droop: Float)? = nil, grip: Hang, magazine: Hang? = nil, scope: (W: Float, L: Float, x: Float)? = nil,
+         rear: Rear, bodyGrooves: String? = nil, barrelGrooves: Bool = false) {
+        bodyID = body.0
+        bodyName = body.1
+        self.body = box
+        self.barrel = barrel
+        self.stock = stock
+        self.grip = grip
+        self.magazine = magazine
+        self.scope = scope
+        self.rear = rear
+        self.bodyGrooves = bodyGrooves
+        self.barrelGrooves = barrelGrooves
+    }
 }
 
 /// One part of a cardboard gun: a folded box or a fin on a glue tab, and where it sits
@@ -42,8 +173,8 @@ public struct GunDetail {
     public var path: SurfacePath
 }
 
-/// Pistol and rifle: boxes and fins cut from one sheet. The first part is the body
-/// (slide / receiver) that everything else is glued to. All sizes derive from the board
+/// A gun: boxes and fins cut from one sheet. The first part is the body (slide, frame
+/// or receiver) that everything else is glued to. All sizes derive from the board
 /// thickness so the parts meet flush.
 public struct GunBlueprint {
     public let kind: GunKind
@@ -59,7 +190,7 @@ public struct GunBlueprint {
     public init(kind: GunKind, thickness t: Float) {
         self.kind = kind
         self.t = t
-        let (parts, details) = kind == .pistol ? GunBlueprint.pistol(t) : GunBlueprint.rifle(t)
+        let (parts, details) = GunBlueprint.build(kind.spec, t)
         self.parts = parts
         self.details = details
         let pieces = parts.map { part -> PieceDef in
@@ -164,87 +295,98 @@ public struct GunBlueprint {
         return .fin(outline: outline, holes: [hole], tab: (gx - 1.8, gx - 0.15))
     }
 
-    // MARK: Pistol
+    // MARK: Build
 
-    static func pistol(_ t: Float) -> ([GunPart], [GunDetail]) {
-        let sW: Float = 1.3, sH: Float = 1.35, sL: Float = 7.6
-        let gW: Float = 1.25, gH: Float = 1.55, gL: Float = 4.4
-        let a = radians(15)
-        let gx = sL - 2.05
-        let top = sH + 2 * t
-        let parts = [
-            GunPart(id: "slide", name: "Slide", shape: .box(W: sW, H: sH, L: sL, caps: BoxNet.Caps(front: true, frontHole: 0.3)),
-                    mount: .identity, approach: V3(0, 0, 0)),
-            GunPart(id: "grip", name: "Grip", shape: .box(W: gW, H: gH, L: gL, caps: BoxNet.Caps()),
-                    mount: hangingBox(x: gx, angle: a, H: gH, t: t), approach: V3(0.4, -1.4, 0)),
-            GunPart(id: "guard", name: "Trigger guard", shape: guardFin(gripX: gx, angle: a),
-                    mount: BoxNet.finBelow(surfaceY: 0, t: t), approach: V3(0, -1.2, 0)),
-            GunPart(id: "rearSight", name: "Rear sight",
-                    shape: .fin(outline: [V2(sL - 1.1, 0), V2(sL - 0.2, 0), V2(sL - 0.2, -0.45), V2(sL - 0.5, -0.45), V2(sL - 0.58, -0.24),
-                                          V2(sL - 0.72, -0.24), V2(sL - 0.8, -0.45), V2(sL - 1.1, -0.45)],
-                                holes: [], tab: (sL - 1.0, sL - 0.3)),
-                    mount: BoxNet.finAbove(surfaceY: top, t: t), approach: V3(0, 1.1, 0)),
-            GunPart(id: "frontSight", name: "Front sight",
-                    shape: .fin(outline: [V2(0.25, 0), V2(1.0, 0), V2(0.8, -0.38), V2(0.45, -0.38)], holes: [], tab: (0.32, 0.93)),
-                    mount: BoxNet.finAbove(surfaceY: top, t: t), approach: V3(0, 1.1, 0)),
-        ]
-        let details = [
-            GunDetail(name: "Draw the ejection port", path: port("slide", u0: sL * 0.3, u1: sL * 0.55, h0: (sH - t) * 0.42, h1: (sH - t) * 0.86, W: sW)),
-            GunDetail(name: "Add the slide serrations", path: zigzag("slide", u0: sL - 1.9, u1: sL - 0.4, h0: 0.18, h1: sH - t - 0.18, step: 0.25, W: sW)),
-            GunDetail(name: "Texture the grip", path: zigzag("grip", u0: 0.9, u1: gL - 0.5, h0: 0.25, h1: gH - t - 0.25, step: 0.45, W: gW)),
-        ]
-        return (parts, details)
-    }
+    static func build(_ g: GunSpec, _ t: Float) -> ([GunPart], [GunDetail]) {
+        let b = g.body
+        let top = b.H + 2 * t
+        let id = g.bodyID
+        // The barrel needs a square slot; otherwise the body's front cap is the muzzle.
+        let caps = g.barrel.map { BoxNet.Caps(front: true, frontSlot: $0.W / 2 + 0.25) } ?? BoxNet.Caps(front: true, frontHole: 0.3)
+        var parts = [GunPart(id: id, name: g.bodyName, shape: .box(W: b.W, H: b.H, L: b.L, caps: caps), mount: .identity,
+                             approach: V3(0, 0, 0))]
+        var details: [GunDetail] = []
+        var frontSightAt: (x: Float, y: Float) = (0, top)
 
-    // MARK: Rifle
+        if let barrel = g.barrel {
+            // Centred in the body's front slot, its back end `insert` inside.
+            let y = (b.H - barrel.W) / 2
+            let front = barrel.insert - barrel.L - 2 * t
+            parts.append(GunPart(id: "barrel", name: "Barrel",
+                                 shape: .box(W: barrel.W, H: barrel.W, L: barrel.L, caps: BoxNet.Caps(front: true, frontHole: barrel.W * 0.29)),
+                                 mount: Pose.translation(V3(barrel.insert - (barrel.L + t), y, 0)), approach: V3(-2.6, 0, 0)))
+            frontSightAt = (front, y + barrel.W + 2 * t)
+            if g.barrelGrooves {
+                let outside = barrel.L - barrel.insert
+                details.append(GunDetail(name: "Groove the pump", path: zigzag("barrel", u0: outside - 4.2, u1: outside - 1.0, h0: 0.12,
+                                                                               h1: barrel.W - t - 0.12, step: 0.3, W: barrel.W)))
+            }
+        }
+        if let stock = g.stock {
+            // Its front cap against the body's end cap, drooping a little.
+            let s = stock.box
+            let pivotLocal = V3(-t, s.H + 2 * t, 0)
+            let pivotBody = V3(b.L + t, top, 0)
+            let mount = Pose.translation(pivotBody) * Pose(rot: Quat(axis: V3(0, 0, 1), angle: -stock.droop)) * Pose.translation(pivotLocal * -1)
+            parts.append(GunPart(id: "stock", name: "Stock", shape: .box(W: s.W, H: s.H, L: s.L, caps: BoxNet.Caps(front: true)),
+                                 mount: mount, approach: V3(1.8, 0, 0)))
+        }
+        let grip = g.grip
+        parts.append(GunPart(id: "grip", name: "Grip", shape: .box(W: grip.box.W, H: grip.box.H, L: grip.box.L, caps: BoxNet.Caps()),
+                             mount: hangingBox(x: grip.x, angle: grip.rake, H: grip.box.H, t: t), approach: V3(0.4, -1.4, 0)))
+        if let mag = g.magazine {
+            parts.append(GunPart(id: "magazine", name: "Magazine", shape: .box(W: mag.box.W, H: mag.box.H, L: mag.box.L, caps: BoxNet.Caps()),
+                                 mount: hangingBox(x: mag.x, angle: mag.rake, H: mag.box.H, t: t), approach: V3(-0.3, -1.4, 0)))
+        }
+        parts.append(GunPart(id: "guard", name: "Trigger guard", shape: guardFin(gripX: grip.x, angle: grip.rake),
+                             mount: BoxNet.finBelow(surfaceY: 0, t: t), approach: V3(0, -1.2, 0)))
+        if let scope = g.scope {
+            parts.append(GunPart(id: "scope", name: "Scope", shape: .box(W: scope.W, H: scope.W, L: scope.L, caps: BoxNet.Caps(front: true, frontHole: scope.W * 0.3)),
+                                 mount: Pose.translation(V3(scope.x, top, 0)), approach: V3(0, 1.2, 0)))
+        }
+        switch g.rear {
+        case .none:
+            break
+        case .sight:
+            // Notched blade near the back of a slide, near the front of a receiver.
+            let x0 = g.barrel == nil ? b.L - 1.1 : 0.3, x1 = x0 + 0.9
+            parts.append(GunPart(id: "rearSight", name: "Rear sight",
+                                 shape: .fin(outline: [V2(x0, 0), V2(x1, 0), V2(x1, -0.45), V2(x1 - 0.3, -0.45), V2(x1 - 0.38, -0.24),
+                                                       V2(x1 - 0.52, -0.24), V2(x1 - 0.6, -0.45), V2(x0, -0.45)],
+                                             holes: [], tab: (x0 + 0.1, x1 - 0.1)),
+                                 mount: BoxNet.finAbove(surfaceY: top, t: t), approach: V3(0, 1.1, 0)))
+        case .hammer:
+            // A spur curling up and back over the end of the frame.
+            let e = b.L
+            parts.append(GunPart(id: "hammer", name: "Hammer",
+                                 shape: .fin(outline: [V2(e - 1.0, 0), V2(e - 0.1, 0), V2(e + 0.3, -0.5), V2(e + 0.45, -0.85), V2(e + 0.15, -0.95),
+                                                       V2(e - 0.15, -0.6), V2(e - 0.6, -0.42), V2(e - 1.0, -0.3)],
+                                             holes: [], tab: (e - 0.9, e - 0.2)),
+                                 mount: BoxNet.finAbove(surfaceY: top, t: t), approach: V3(0, 1.1, 0)))
+        }
+        // Front sight: on the muzzle end of the barrel, or of the slide.
+        let fx = g.barrel == nil ? Float(0) : frontSightAt.x
+        parts.append(GunPart(id: "frontSight", name: "Front sight",
+                             shape: .fin(outline: [V2(fx + 0.4, 0), V2(fx + 1.1, 0), V2(fx + 0.9, -0.4), V2(fx + 0.6, -0.4)],
+                                         holes: [], tab: (fx + 0.47, fx + 1.03)),
+                             mount: BoxNet.finAbove(surfaceY: frontSightAt.y, t: t), approach: V3(0, 1.1, 0)))
 
-    static func rifle(_ t: Float) -> ([GunPart], [GunDetail]) {
-        let rW: Float = 1.5, rH: Float = 1.7, rL: Float = 7.2
-        let bW: Float = 0.62, bL: Float = 9.0
-        let insert: Float = 2.4
-        let sW: Float = 1.35, sH: Float = 2.3, sL: Float = 5.2
-        let gW: Float = 1.15, gH: Float = 1.45, gL: Float = 3.6
-        let mW: Float = 1.0, mH: Float = 1.35, mL: Float = 3.1
-        let cW: Float = 0.75, cL: Float = 4.4
-        let ga = radians(16), ma = radians(-10)
-        let gx = rL - 2.5
-        let top = rH + 2 * t
-
-        // Barrel: centred in the receiver's front slot, its back end `insert` inside.
-        let barrelY = (rH - bW) / 2
-        let barrel = Pose.translation(V3(insert - (bL + t), barrelY, 0))
-        let barrelFront = insert - bL - 2 * t
-        // Stock: its front cap against the receiver's end cap, drooping a little.
-        let pivotLocal = V3(-t, sH + 2 * t, 0)
-        let pivotBody = V3(rL + t, top, 0)
-        let stock = Pose.translation(pivotBody) * Pose(rot: Quat(axis: V3(0, 0, 1), angle: -radians(6))) * Pose.translation(pivotLocal * -1)
-
-        let parts = [
-            GunPart(id: "receiver", name: "Receiver",
-                    shape: .box(W: rW, H: rH, L: rL, caps: BoxNet.Caps(front: true, frontSlot: 0.56)),
-                    mount: .identity, approach: V3(0, 0, 0)),
-            GunPart(id: "barrel", name: "Barrel", shape: .box(W: bW, H: bW, L: bL, caps: BoxNet.Caps(front: true, frontHole: 0.18)),
-                    mount: barrel, approach: V3(-2.6, 0, 0)),
-            GunPart(id: "stock", name: "Stock", shape: .box(W: sW, H: sH, L: sL, caps: BoxNet.Caps(front: true)),
-                    mount: stock, approach: V3(1.8, 0, 0)),
-            GunPart(id: "grip", name: "Grip", shape: .box(W: gW, H: gH, L: gL, caps: BoxNet.Caps()),
-                    mount: hangingBox(x: gx, angle: ga, H: gH, t: t), approach: V3(0.4, -1.4, 0)),
-            GunPart(id: "magazine", name: "Magazine", shape: .box(W: mW, H: mH, L: mL, caps: BoxNet.Caps()),
-                    mount: hangingBox(x: 0.9, angle: ma, H: mH, t: t), approach: V3(-0.3, -1.4, 0)),
-            GunPart(id: "guard", name: "Trigger guard", shape: guardFin(gripX: gx, angle: ga),
-                    mount: BoxNet.finBelow(surfaceY: 0, t: t), approach: V3(0, -1.2, 0)),
-            GunPart(id: "scope", name: "Scope", shape: .box(W: cW, H: cW, L: cL, caps: BoxNet.Caps(front: true, frontHole: 0.22)),
-                    mount: Pose.translation(V3(1.6, top, 0)), approach: V3(0, 1.2, 0)),
-            GunPart(id: "frontSight", name: "Front sight",
-                    shape: .fin(outline: [V2(barrelFront + 0.4, 0), V2(barrelFront + 1.1, 0), V2(barrelFront + 0.9, -0.42),
-                                          V2(barrelFront + 0.6, -0.42)], holes: [], tab: (barrelFront + 0.47, barrelFront + 1.03)),
-                    mount: BoxNet.finAbove(surfaceY: barrelY + bW + 2 * t, t: t), approach: V3(0, 1.1, 0)),
-        ]
-        let details = [
-            GunDetail(name: "Draw the ejection port", path: port("receiver", u0: rL * 0.42, u1: rL * 0.68, h0: (rH - t) * 0.45, h1: (rH - t) * 0.85, W: rW)),
-            GunDetail(name: "Ridge the magazine", path: zigzag("magazine", u0: 0.7, u1: mL - 0.4, h0: 0.2, h1: mH - t - 0.2, step: 0.4, W: mW)),
-            GunDetail(name: "Texture the grip", path: zigzag("grip", u0: 0.8, u1: gL - 0.5, h0: 0.22, h1: gH - t - 0.22, step: 0.45, W: gW)),
-        ]
+        // Marker details.
+        let inner = b.H - t
+        if g.rear != .hammer {
+            let (u0, u1): (Float, Float) = g.barrel == nil ? (b.L * 0.3, b.L * 0.55) : (b.L * 0.42, b.L * 0.68)
+            details.insert(GunDetail(name: "Draw the ejection port", path: port(id, u0: u0, u1: u1, h0: inner * 0.45, h1: inner * 0.85, W: b.W)), at: 0)
+        }
+        if let name = g.bodyGrooves {
+            let (u0, u1, step): (Float, Float, Float) = g.rear == .hammer ? (0.4, b.L - 0.4, 0.4) : (b.L - 1.9, b.L - 0.4, 0.25)
+            details.append(GunDetail(name: name, path: zigzag(id, u0: u0, u1: u1, h0: 0.18, h1: inner - 0.18, step: step, W: b.W)))
+        }
+        if let mag = g.magazine {
+            details.append(GunDetail(name: "Ridge the magazine", path: zigzag("magazine", u0: 0.7, u1: mag.box.L - 0.4, h0: 0.2,
+                                                                              h1: mag.box.H - t - 0.2, step: 0.4, W: mag.box.W)))
+        }
+        details.append(GunDetail(name: "Texture the grip", path: zigzag("grip", u0: 0.8, u1: grip.box.L - 0.5, h0: 0.22,
+                                                                        h1: grip.box.H - t - 0.22, step: 0.45, W: grip.box.W)))
         return (parts, details)
     }
 }

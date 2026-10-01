@@ -1,6 +1,6 @@
 import Foundation
 
-// Checks for the pistol and rifle blueprints on every board thickness.
+// Checks for every gun blueprint on every board thickness.
 
 func runGunTests(outDir: String) {
     for kind in GunKind.allCases {
@@ -58,7 +58,9 @@ func runGunTests(outDir: String) {
                     let ys = face.map { $0.y }
                     let target: Float
                     if part.id == "guard" { target = 0 }
-                    else if kind == .rifle && part.id == "frontSight" { target = bp.part("barrel")!.mount.pos.y + 0.62 + 2 * t }
+                    else if part.id == "frontSight", let barrel = bp.part("barrel"), let bw = barrel.boxSize?.W {
+                        target = barrel.mount.pos.y + bw + 2 * t
+                    }
                     else { target = bodyTop }
                     check(ys.allSatisfy { abs($0 - target) < 1e-3 }, "\(tag) \(part.id) tab on its surface \(ys) vs \(target)")
                     check(u1 > u0 + 0.3, "\(tag) \(part.id) tab span")
@@ -81,22 +83,34 @@ func runGunTests(outDir: String) {
                 check(top.allSatisfy { $0.x > 0 && $0.x < bL }, "\(tag) \(id) under the body \(top)")
                 check(W + 2 * t <= bW + 2 * t + 1e-3, "\(tag) \(id) no wider than the body")
             }
-            // Rifle: barrel through the slot, inside the receiver; stock against its back.
-            if kind == .rifle, let barrel = bp.part("barrel"), let (W, H, L, _) = barrel.boxSize {
+            // The trigger guard hangs clear of the magazine, its tab under the body.
+            if let guardTab = bp.part("guard")?.tabSpan {
+                check(guardTab.0 > 0 && guardTab.1 < bL, "\(tag) guard tab under the body \(guardTab)")
+                if let mag = bp.part("magazine"), let (_, H, _, _) = mag.boxSize {
+                    let back = max(mag.mount.apply(V3(0, 0, 0)).x, mag.mount.apply(V3(0, H + 2 * t, 0)).x)
+                    let guardFront = bp.piece("guard")!.panel("F0")!.outline.map { $0.x }.min()!
+                    check(back < guardFront, "\(tag) magazine clear of the trigger guard \(back) vs \(guardFront)")
+                }
+            }
+            // Barrel through the slot, inside the body; stock against its back.
+            if let barrel = bp.part("barrel"), let (W, H, L, _) = barrel.boxSize {
                 let insideEnd = barrel.mount.apply(V3(L + t, 0, 0)).x
                 check(insideEnd > 1 && insideEnd < bL, "\(tag) barrel goes in \(insideEnd)")
                 let lo = barrel.mount.apply(V3(0, 0, -W / 2 - t)), hi = barrel.mount.apply(V3(0, H + 2 * t, W / 2 + t))
                 check(lo.y > t && hi.y < bH + t, "\(tag) barrel inside the receiver \(lo.y)..\(hi.y)")
-                let slot = bp.piece("receiver")!.panel("FC")!.holes[0]
-                var rr = FoldRig(piece: bp.piece("receiver")!, thickness: t)
-                rr.angles = bp.finishedAngles("receiver")
+                let slot = bp.piece(body.id)!.panel("FC")!.holes[0]
+                var rr = FoldRig(piece: bp.piece(body.id)!, thickness: t)
+                rr.angles = bp.finishedAngles(body.id)
                 let s = slot.map { rr.pose(of: "FC").apply($0.onMat(0)) }
                 check(s.map { $0.y }.min()! < lo.y && s.map { $0.y }.max()! > hi.y && s.map { $0.z }.min()! < lo.z && s.map { $0.z }.max()! > hi.z,
                       "\(tag) barrel fits the slot")
-                let stock = bp.part("stock")!
+            }
+            if let stock = bp.part("stock") {
                 let front = stock.mount.apply(V3(-t, stock.boxSize!.H + 2 * t, 0))
                 check(abs(front.x - (bL + t)) < 1e-3 && abs(front.y - bodyTop) < 1e-3, "\(tag) stock meets the receiver \(front)")
             }
+            check(Set(bp.parts.map { $0.id }).count == bp.parts.count, "\(tag) unique part ids")
+            check(bp.details.count >= 2, "\(tag) has marker details")
             // Glue and details stay on their panels.
             let paths = bp.details.map { $0.path } + bp.parts.compactMap { bp.glue($0.id) }
             for path in paths {

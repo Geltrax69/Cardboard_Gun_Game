@@ -6,6 +6,11 @@ public enum Campaign {
     public static let order: [String] = [
         "knife", "pistol", "dagger", "kunai", "rifle", "bowie", "shortSword", "handAxe",
         "flameDagger", "karambit", "scimitar", "longsword", "katana", "battleAxe",
+        // Added later, after everything above so nobody loses an unlock.
+        "compact", "huntingKnife", "stiletto", "gladius", "revolver", "tomahawk", "tantoKnife", "dirk",
+        "smg", "cutlass", "machete", "mainGauche", "carbine", "rapier", "hatchet", "cleaver",
+        "machinePistol", "broadsword", "kukri", "wakizashi", "shotgun", "falchion", "survivalKnife", "targetPistol",
+        "claymore", "beardedAxe", "flamberge", "sniper",
     ]
 
     public static func index(of id: String) -> Int? { order.firstIndex(of: id) }

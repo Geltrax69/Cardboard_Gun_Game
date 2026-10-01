@@ -54,7 +54,7 @@ struct ProjectInfo: Identifiable, Equatable {
     static func gunProject(_ kind: GunKind, index: Int) -> ProjectInfo {
         ProjectInfo(id: kind.rawValue, name: kind.title, kind: .gun, gun: kind, level: Progression.unlockLevel(index: index),
                     reward: 300 + 40 * index,
-                    blurb: kind == .pistol ? "Slide · raked grip · trigger guard · sights" : "Barrel · scope · stock · magazine",
+                    blurb: kind.blurb,
                     campaignIndex: index)
     }
 
@@ -69,6 +69,33 @@ struct ProjectInfo: Identifiable, Equatable {
                                        blurb: "Unlimited cardboard: draw, cut, fold, paint")
 
     static func byID(_ id: String) -> ProjectInfo? { campaign.first { $0.id == id } }
+}
+
+/// Filters for the menu's project list.
+enum ProjectCategory: String, CaseIterable {
+    case all, knives, daggers, swords, axes, guns
+
+    var title: String {
+        switch self {
+        case .all: return "All"
+        case .knives: return "Knives"
+        case .daggers: return "Daggers"
+        case .swords: return "Swords"
+        case .axes: return "Axes"
+        case .guns: return "Guns"
+        }
+    }
+
+    func includes(_ p: ProjectInfo) -> Bool {
+        switch self {
+        case .all: return true
+        case .guns: return p.kind == .gun
+        case .knives: return p.design?.kind == .knife
+        case .daggers: return p.design?.kind == .dagger
+        case .swords: return p.design?.kind == .sword
+        case .axes: return p.design?.kind == .axe
+        }
+    }
 }
 
 /// Tools on the menu shelf.

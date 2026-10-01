@@ -42,11 +42,6 @@ final class IconFactory: ObservableObject {
         out["project.knife"] = weaponSnap(.knife, stock: stock)
         out["weapon.knife"] = out["project.knife"]
         out["tool.marker"] = snap(turned(Props.marker(), yaw: 0.6), target: V3(1.6, 0, -1.0), distance: 8.5, polar: 0.62)
-        for kind in GunKind.allCases {
-            let span = GunModel.span(kind, stock: stock)
-            out["gun.\(kind.rawValue)"] = snap(turned(GunModel.assembled(kind, stock: stock), yaw: 0.3), target: V3(0, 0, 0),
-                                               distance: span * 1.55 + 2, polar: 1.0)
-        }
         out["project.free"] = snap(freeCraftModel(stock: stock), target: V3(0, 0.4, 0), distance: 15, polar: 0.8)
         images = out
         renderWeapons(stock: stock)
@@ -56,14 +51,21 @@ final class IconFactory: ObservableObject {
 
     private var weaponTask: Task<Void, Never>?
 
-    /// Campaign weapon icons, a few per frame so launch stays smooth.
+    /// Campaign weapon and gun icons, one per frame in campaign order (the first cards
+    /// on the menu fill in first) so launch stays smooth.
     private func renderWeapons(stock: CardboardStock) {
         weaponTask?.cancel()
         weaponTask = Task { @MainActor [weak self] in
-            for design in WeaponDesign.campaign {
+            for id in Campaign.order {
                 await Task.yield()
                 guard let self, !Task.isCancelled else { return }
-                self.images["weapon.\(design.id)"] = self.weaponSnap(design, stock: stock)
+                if let design = WeaponDesign.byID(id) {
+                    self.images["weapon.\(id)"] = self.weaponSnap(design, stock: stock)
+                } else if let kind = GunKind(rawValue: id) {
+                    let span = GunModel.span(kind, stock: stock)
+                    self.images["gun.\(id)"] = self.snap(turned(GunModel.assembled(kind, stock: stock), yaw: 0.3), target: V3(0, 0, 0),
+                                                         distance: span * 1.55 + 2, polar: 1.0)
+                }
             }
         }
     }
