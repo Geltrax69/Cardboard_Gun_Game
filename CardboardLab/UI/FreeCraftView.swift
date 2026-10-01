@@ -8,19 +8,53 @@ struct FreeCraftView: View {
     @EnvironmentObject var model: FreeCraftModel
     @EnvironmentObject var profile: PlayerProfile
     let scale: CGFloat
+    /// Last drag translation / pinch magnification, to turn them into deltas.
+    @State private var lastDrag: CGSize?
+    @State private var lastPinch: CGFloat?
 
     var body: some View {
         GeometryReader { geo in
             let s = scale
             let panelWidth = min(geo.size.width * 0.44, 560 * s)
+            let stageWidth = geo.size.width - panelWidth - 36 * s
             ZStack(alignment: .topLeading) {
-                // Top-left: home, name of the weapon, how to spin it.
+                // The whole area left of the panel turns the weapon: drag in any direction
+                // to see it from the top, the bottom or any side; pinch to zoom.
+                Color.clear
+                    .contentShape(Rectangle())
+                    .frame(width: stageWidth, height: geo.size.height)
+                    .gesture(DragGesture(minimumDistance: 0)
+                        .onChanged { v in
+                            if let last = lastDrag {
+                                engine.designerDrag(dx: Float(v.translation.width - last.width),
+                                                    dy: Float(v.translation.height - last.height))
+                            } else {
+                                engine.designerDragBegan()
+                            }
+                            lastDrag = v.translation
+                        }
+                        .onEnded { _ in
+                            lastDrag = nil
+                            engine.designerDragEnded()
+                        })
+                    .simultaneousGesture(MagnifyGesture()
+                        .onChanged { v in
+                            let last = lastPinch ?? 1
+                            engine.designerPinch(Float(v.magnification / max(last, 0.01)))
+                            lastPinch = v.magnification
+                        }
+                        .onEnded { _ in lastPinch = nil })
+
+                // Top-left: home, reset view, name of the weapon, how to turn it.
                 HStack(alignment: .top, spacing: 14 * s) {
                     HomeButton(size: 64 * s) { engine.closeFreeCraft() }
+                    RoundIconButton(systemName: "arrow.counterclockwise", size: 50 * s) { engine.resetDesignerView() }
+                        .padding(.top, 7 * s)
+                        .accessibilityLabel("Reset view")
                     VStack(alignment: .leading, spacing: 4 * s) {
                         OutlinedText(text: model.design.name, font: LabFont.black(34 * s), fill: .labCardboardLight,
                                      width: 2.5 * s, depth: 4 * s)
-                        Text("FREE CRAFT · drag the weapon to spin it")
+                        Text("FREE CRAFT · drag to turn it any way · pinch to zoom")
                             .font(LabFont.heavy(14 * s))
                             .foregroundStyle(Color.labPaper.opacity(0.85))
                             .shadow(color: .labInk, radius: 0, x: 0, y: 2)

@@ -228,7 +228,14 @@ extension ButtonStyleConfiguration.Label: View { public var body: Never { fatalE
 public protocol PrimitiveButtonStyle {}
 public struct PlainButtonStyle: PrimitiveButtonStyle { public init() {} }
 extension PrimitiveButtonStyle where Self == PlainButtonStyle { public static var plain: PlainButtonStyle { PlainButtonStyle() } }
-public struct DragGesture {
+public protocol Gesture {}
+public struct MagnifyGesture: Gesture {
+    public struct Value { public var magnification: CGFloat { 1 } }
+    public init(minimumScaleDelta: CGFloat = 0.01) {}
+    public func onChanged(_ f: @escaping (Value) -> Void) -> MagnifyGesture { self }
+    public func onEnded(_ f: @escaping (Value) -> Void) -> MagnifyGesture { self }
+}
+public struct DragGesture: Gesture {
     public struct Value { public var location: CGPoint { .zero } ; public var translation: CGSize { .zero } ; public var startLocation: CGPoint { .zero } }
     public init(minimumDistance: CGFloat = 10) {}
     public func onChanged(_ f: @escaping (Value) -> Void) -> DragGesture { self }
@@ -294,8 +301,8 @@ extension View {
     public func onChange<V: Equatable>(of v: V, _ action: @escaping (V, V) -> Void) -> some View { self }
     public func onChange<V: Equatable>(of v: V, _ action: @escaping () -> Void) -> some View { self }
     public func task(_ action: @escaping @Sendable () async -> Void) -> some View { self }
-    public func gesture(_ g: DragGesture) -> some View { self }
-    public func simultaneousGesture(_ g: DragGesture) -> some View { self }
+    public func gesture<G: Gesture>(_ g: G) -> some View { self }
+    public func simultaneousGesture<G: Gesture>(_ g: G) -> some View { self }
     public func buttonStyle<S: PrimitiveButtonStyle>(_ s: S) -> some View { self }
     public func buttonStyle<S: ButtonStyle>(_ s: S) -> some View { self }
     public func ignoresSafeArea(_ regions: Int = 0, edges: Edge.Set = .all) -> some View { self }

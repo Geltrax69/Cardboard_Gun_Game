@@ -63,8 +63,9 @@ badge on the menu.
 ### Free Craft
 
 **Free Craft** (top of the Weapons list) is a designer for your own weapons. The weapon
-spins on a turntable above the mat (drag to spin it, pinch to zoom) and updates live as
-you pick parts:
+floats above the mat and updates live as you pick parts. Drag in any direction to turn
+it over and see it from the top, the bottom or any side, flick to spin it, pinch to
+zoom, and tap ↺ to reset the view:
 
 - **Type**: knife, dagger, sword or axe
 - **Blade**: double edge (ridge) or single edge (laminated), tip shape, plain or

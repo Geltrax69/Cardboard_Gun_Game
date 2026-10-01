@@ -182,18 +182,18 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
             handler(phase, p)
             return
         }
-        // Free Craft: one finger spins the weapon on its turntable.
+        // Free Craft: one finger turns the weapon (FreeCraftView usually handles this).
         if screen == .designer {
             switch phase {
             case .began:
                 idleOrbitLast = p
-                designer.setDragging(true)
+                designerDragBegan()
             case .moved:
-                if let last = idleOrbitLast { designer.drag(dx: p.x - last.x) }
+                if let last = idleOrbitLast { designerDrag(dx: p.x - last.x, dy: p.y - last.y) }
                 idleOrbitLast = p
             case .ended, .cancelled:
                 idleOrbitLast = nil
-                designer.setDragging(false)
+                designerDragEnded()
             }
             return
         }
@@ -416,6 +416,27 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
         }
     }
 
+    func designerDragBegan() { designer.beginDrag(time: time) }
+
+    func designerDrag(dx: Float, dy: Float) {
+        designer.drag(dx: dx, dy: dy, camera: rig.orbit, time: time)
+    }
+
+    func designerDragEnded() { designer.endDrag(time: time) }
+
+    /// Pinch: scale > 1 zooms in.
+    func designerPinch(_ scale: Float) {
+        rig.userPinch(scale)
+        syncViewAdjusted()
+    }
+
+    /// Back to the starting angle and zoom.
+    func resetDesignerView() {
+        designer.resetOrientation()
+        rig.resetUserView(tweener: tweener)
+        sound.play(.tap)
+    }
+
     /// Builds the current Free Craft design.
     func craftFreeDesign() {
         guard screen == .designer, !transitioning else { return }
@@ -437,7 +458,8 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
 
     /// Hero view of the turntable, framed in the space left of the designer panel.
     func designerShot(span: Float) -> OrbitCamera {
-        rig.framing(center: DesignerStage.center, size: V2(span + 2.5, max(7, span * 0.5)), view: .hero,
+        // The weapon turns freely, so frame its whole spinning sphere.
+        rig.framing(center: DesignerStage.center, size: V2(span + 2, max(7, span * 0.75 + 1.5)), view: .hero,
                     insets: CameraRig.Insets(top: 0.17, bottom: 0.1, left: 0.02, right: 0.46))
     }
 
