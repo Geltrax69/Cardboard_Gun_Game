@@ -68,6 +68,13 @@ class CraftSession {
 
     // MARK: Camera
 
+    /// One-time tip the first time the camera tilts into 3D.
+    func showRotateTip() {
+        guard !engine.profile.seenRotateTip else { return }
+        engine.profile.markRotateTipSeen()
+        engine.toast("Tip: two fingers to rotate · pinch to zoom", .info, life: 3.5)
+    }
+
     func look(at center: V3, size: V2, shot: CameraRig.Shot, duration: Double = 1.0, zoom: Float = 1) async throws {
         try await rig.move(to: rig.framing(center: center, size: size, view: shot, zoom: zoom), duration: duration, tweener: tw)
     }

@@ -24,7 +24,7 @@ struct Toast: Identifiable, Equatable {
 /// Owns the SceneKit world, the game loop and input routing. Crafting sessions and the
 /// menu drive it; SwiftUI observes it.
 @MainActor
-final class GameEngine: NSObject, ObservableObject, PointerSink {
+final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecognizerDelegate {
     // MARK: Scene
     let scene = SCNScene()
     let scnView = GameSCNView(frame: .zero)
@@ -57,6 +57,10 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
     @Published private(set) var guideVisible = false
     /// Whether closing the guide with "Start crafting" launches the knife.
     @Published private(set) var guideStartsCraft = false
+    /// The player has rotated / zoomed the crafting view (shows the reset button).
+    @Published private(set) var viewAdjusted = false
+    /// One-finger orbit while no tool is active.
+    private var idleOrbitLast: V2?
     private var sessionTask: Task<Void, Never>?
     /// Bumped whenever a session starts or is abandoned, so a cancelled session's
     /// unwinding can't clobber the state of whatever replaced it.
@@ -96,8 +100,9 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
         scnView.rendersContinuously = true
         scnView.isPlaying = true
         scnView.allowsCameraControl = false
-        scnView.isMultipleTouchEnabled = false
+        scnView.isMultipleTouchEnabled = true
         scnView.sink = self
+        installCameraGestures()
 
         menu.select(profile.stock.id)
         rig.set(menuShot())
@@ -125,6 +130,7 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
         for handler in Array(frameHandlers.values) { handler(dt) }
         particles.update(Float(dt))
         rig.update(dt)
+        if viewAdjusted != rig.isUserAdjusted { viewAdjusted = rig.isUserAdjusted }
         if screen == .menu {
             menu.update(time: time)
             refreshMenuAnchors()
@@ -158,7 +164,77 @@ final class GameEngine: NSObject, ObservableObject, PointerSink {
     // MARK: Input
 
     func pointer(_ phase: PointerPhase, at point: CGPoint) {
-        pointerHandler?(phase, V2(Float(point.x), Float(point.y)))
+        let p = V2(Float(point.x), Float(point.y))
+        if let handler = pointerHandler {
+            idleOrbitLast = nil
+            handler(phase, p)
+            return
+        }
+        // No tool in hand: one finger turns the view.
+        guard cameraControlEnabled else { idleOrbitLast = nil; return }
+        switch phase {
+        case .began:
+            idleOrbitLast = p
+        case .moved:
+            if let last = idleOrbitLast {
+                rig.userRotate(dx: p.x - last.x, dy: p.y - last.y)
+                idleOrbitLast = p
+                syncViewAdjusted()
+            }
+        case .ended, .cancelled:
+            idleOrbitLast = nil
+        }
+    }
+
+    // MARK: Camera control (rotate / zoom the 3D view)
+
+    /// Player camera control is available while crafting (not on the menu).
+    var cameraControlEnabled: Bool { screen == .crafting && !guideVisible }
+
+    private func installCameraGestures() {
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handleTwoFingerPan(_:)))
+        pan.minimumNumberOfTouches = 2
+        pan.maximumNumberOfTouches = 2
+        pan.delegate = self
+        scnView.addGestureRecognizer(pan)
+        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
+        pinch.delegate = self
+        scnView.addGestureRecognizer(pinch)
+    }
+
+    @objc private func handleTwoFingerPan(_ g: UIPanGestureRecognizer) {
+        guard cameraControlEnabled else { return }
+        let t = g.translation(in: scnView)
+        rig.userRotate(dx: Float(t.x), dy: Float(t.y))
+        g.setTranslation(.zero, in: scnView)
+        syncViewAdjusted()
+    }
+
+    @objc private func handlePinch(_ g: UIPinchGestureRecognizer) {
+        guard cameraControlEnabled else { return }
+        rig.userPinch(Float(g.scale))
+        g.scale = 1
+        syncViewAdjusted()
+    }
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        cameraControlEnabled
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        true
+    }
+
+    /// Back to the step's own camera framing.
+    func resetView() {
+        rig.resetUserView(tweener: tweener)
+        sound.play(.tap)
+    }
+
+    private func syncViewAdjusted() {
+        let adjusted = rig.isUserAdjusted
+        if adjusted != viewAdjusted { viewAdjusted = adjusted }
     }
 
     // MARK: Projection helpers (view coordinates, points)

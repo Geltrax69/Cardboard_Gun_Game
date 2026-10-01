@@ -118,3 +118,38 @@ public enum UIUserInterfaceIdiom { case phone, pad, mac }
     open func impactOccurred() {}
     open func prepare() {}
 }
+
+public enum UIGestureRecognizerState { case possible, began, changed, ended, cancelled, failed }
+
+@MainActor public protocol UIGestureRecognizerDelegate: NSObjectProtocol {
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool
+}
+
+@MainActor open class UIGestureRecognizer: NSObject {
+    public init(target: Any?, action: Selector?) {}
+    open var state: UIGestureRecognizerState { .possible }
+    open weak var delegate: UIGestureRecognizerDelegate?
+    open var isEnabled = true
+    open var cancelsTouchesInView = true
+    open var numberOfTouches: Int { 0 }
+    open func location(in view: UIView?) -> CGPoint { .zero }
+}
+
+@MainActor open class UIPanGestureRecognizer: UIGestureRecognizer {
+    open var minimumNumberOfTouches: Int = 1
+    open var maximumNumberOfTouches: Int = Int.max
+    open func translation(in view: UIView?) -> CGPoint { .zero }
+    open func setTranslation(_ translation: CGPoint, in view: UIView?) {}
+    open func velocity(in view: UIView?) -> CGPoint { .zero }
+}
+
+@MainActor open class UIPinchGestureRecognizer: UIGestureRecognizer {
+    open var scale: CGFloat = 1
+    open var velocity: CGFloat { 0 }
+}
+
+extension UIView {
+    public func addGestureRecognizer(_ g: UIGestureRecognizer) {}
+}

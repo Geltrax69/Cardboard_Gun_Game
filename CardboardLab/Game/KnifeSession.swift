@@ -189,6 +189,7 @@ final class KnifeSession: CraftSession {
 
         step(2, "Fold the walls up", "Drag each flap up along the blue arrow.", tool: .hand)
         try await look(at: handleCenter(), size: V2(8, 6.5), shot: .threeQuarter, duration: 1.1)
+        showRotateTip()
         let flaps: [(String, V3)] = [
             ("HS1", V3(bp.L / 2, t, -bp.W / 2 - bp.H)),
             ("HS2", V3(bp.L / 2, t, bp.W / 2 + bp.H - t)),

@@ -12,6 +12,8 @@ final class PlayerProfile: ObservableObject {
         var soundOn = true
         var hintsOn = true
         var seenGuide = false
+        /// Optional so saves from earlier versions still decode.
+        var seenRotateTip: Bool?
     }
 
     private static let key = "cardboardlab.save.v1"
@@ -43,6 +45,7 @@ final class PlayerProfile: ObservableObject {
     var soundOn: Bool { data.soundOn }
     var hintsOn: Bool { data.hintsOn }
     var seenGuide: Bool { data.seenGuide }
+    var seenRotateTip: Bool { data.seenRotateTip ?? false }
 
     func isUnlocked(_ stock: CardboardStock) -> Bool { data.unlockedStocks.contains(stock.id) }
     func progress(of project: String) -> Int { data.progress[project] ?? 0 }
@@ -80,6 +83,7 @@ final class PlayerProfile: ObservableObject {
     func setSound(_ on: Bool) { mutate { $0.soundOn = on } }
     func setHints(_ on: Bool) { mutate { $0.hintsOn = on } }
     func markGuideSeen() { mutate { $0.seenGuide = true } }
+    func markRotateTipSeen() { mutate { $0.seenRotateTip = true } }
 
     func reset() {
         mutate { $0 = SaveData() }

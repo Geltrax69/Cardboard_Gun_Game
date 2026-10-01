@@ -30,11 +30,35 @@ final class CameraRig {
 
     let node = SCNNode()
     let camera = SCNCamera()
-    private(set) var orbit = OrbitCamera()
+    /// Camera chosen by the game (each step's framing).
+    private(set) var base = OrbitCamera()
+    /// Player orbit on top of the base camera (two-finger drag / pinch).
+    private(set) var userYaw: Float = 0
+    private(set) var userPitch: Float = 0
+    private(set) var userZoom: Float = 1
     /// Fractions of the screen covered by HUD at the top and bottom.
     var safeTop: Float = 0.17
     var safeBottom: Float = 0.15
     private var shake: Float = 0
+
+    static let minPolar: Float = 0.03
+    static let maxPolar: Float = 1.35
+    static let zoomRange: ClosedRange<Float> = 0.45...2.2
+
+    /// The camera actually rendered (base + player orbit). Input, overlays and toasts all
+    /// project through this, so they stay correct while the view is rotated.
+    var orbit: OrbitCamera {
+        var o = base
+        o.azimuth = base.azimuth + userYaw
+        o.polar = clampf(base.polar + userPitch, CameraRig.minPolar, CameraRig.maxPolar)
+        o.distance = base.distance * userZoom
+        return o
+    }
+
+    /// True while the player has turned or zoomed away from the step's framing.
+    var isUserAdjusted: Bool {
+        abs(userYaw) > 0.02 || abs(userPitch) > 0.02 || abs(userZoom - 1) > 0.02
+    }
 
     init() {
         camera.fieldOfView = 30
@@ -48,7 +72,7 @@ final class CameraRig {
 
     func setViewport(_ size: CGSize) {
         guard size.width > 0, size.height > 0 else { return }
-        orbit.viewSize = V2(Float(size.width), Float(size.height))
+        base.viewSize = V2(Float(size.width), Float(size.height))
         apply()
     }
 
@@ -63,7 +87,7 @@ final class CameraRig {
     /// the middle of the area not covered by UI.
     func framing(center: V3, size: V2, view: Shot, zoom: Float = 1, insets: Insets? = nil) -> OrbitCamera {
         let ins = insets ?? hudInsets
-        var o = orbit
+        var o = base
         o.polar = view.polar
         o.azimuth = view.azimuth
         o.distance = o.fitDistance(width: size.x, depth: size.y, polar: view.polar,
@@ -76,32 +100,67 @@ final class CameraRig {
 
     func set(_ o: OrbitCamera) {
         var n = o
-        n.viewSize = orbit.viewSize
-        orbit = n
+        n.viewSize = base.viewSize
+        base = n
+        userYaw = 0
+        userPitch = 0
+        userZoom = 1
         apply()
     }
 
+    /// Scripted move to a new framing; any player orbit eases back to neutral on the way.
     func move(to target: OrbitCamera, duration: Double = 1.1, ease: Ease = .inOutCubic, tweener: Tweener) async throws {
-        let from = orbit
-        let to = target
-        try await tweener.tween(duration, ease: ease) { [weak self] k in
-            guard let self else { return }
-            var o = from.lerp(to, k)
-            o.viewSize = self.orbit.viewSize
-            self.orbit = o
-            self.apply()
-        }
+        let step = transition(to: target)
+        try await tweener.tween(duration, ease: ease) { k in step(k) }
     }
 
     /// Starts a camera move without waiting for it.
     func glide(to target: OrbitCamera, duration: Double = 1.1, ease: Ease = .inOutCubic, tweener: Tweener) {
-        let from = orbit
-        let to = target
-        tweener.start(duration, ease: ease, tag: "camera") { [weak self] k in
+        let step = transition(to: target)
+        tweener.start(duration, ease: ease, tag: "camera") { k in step(k) }
+    }
+
+    private func transition(to target: OrbitCamera) -> (Float) -> Void {
+        let from = base
+        let yaw0 = userYaw, pitch0 = userPitch, zoom0 = userZoom
+        return { [weak self] k in
             guard let self else { return }
-            var o = from.lerp(to, k)
-            o.viewSize = self.orbit.viewSize
-            self.orbit = o
+            var o = from.lerp(target, k)
+            o.viewSize = self.base.viewSize
+            self.base = o
+            self.userYaw = yaw0 * (1 - k)
+            self.userPitch = pitch0 * (1 - k)
+            self.userZoom = zoom0 + (1 - zoom0) * k
+            self.apply()
+        }
+    }
+
+    // MARK: Player orbit
+
+    /// Rotates the view by a finger movement in points (drag right turns the board right,
+    /// drag down tips it toward you).
+    func userRotate(dx: Float, dy: Float) {
+        userYaw -= dx * 0.0085
+        let pitch = userPitch + dy * 0.0065
+        userPitch = clampf(pitch, CameraRig.minPolar - base.polar, CameraRig.maxPolar - base.polar)
+        apply()
+    }
+
+    /// Pinch: scale > 1 zooms in.
+    func userPinch(_ scale: Float) {
+        guard scale > 0.01 else { return }
+        userZoom = clampf(userZoom / scale, CameraRig.zoomRange.lowerBound, CameraRig.zoomRange.upperBound)
+        apply()
+    }
+
+    /// Eases back to the step's own framing.
+    func resetUserView(tweener: Tweener, duration: Double = 0.6) {
+        let yaw0 = userYaw, pitch0 = userPitch, zoom0 = userZoom
+        tweener.start(duration, ease: .inOutCubic, tag: "cameraReset") { [weak self] k in
+            guard let self else { return }
+            self.userYaw = yaw0 * (1 - k)
+            self.userPitch = pitch0 * (1 - k)
+            self.userZoom = zoom0 + (1 - zoom0) * k
             self.apply()
         }
     }
@@ -118,11 +177,12 @@ final class CameraRig {
     }
 
     func apply() {
-        var eye = orbit.eye
+        let o = orbit
+        var eye = o.eye
         if shake > 0 {
             let k = shake * shake * 0.25
-            eye += orbit.right * Float.random(in: -k...k) + orbit.up * Float.random(in: -k...k)
+            eye += o.right * Float.random(in: -k...k) + o.up * Float.random(in: -k...k)
         }
-        node.setPose(Pose(rot: orbit.orientation, pos: eye))
+        node.setPose(Pose(rot: o.orientation, pos: eye))
     }
 }

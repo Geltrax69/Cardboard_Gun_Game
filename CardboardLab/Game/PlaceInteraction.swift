@@ -101,7 +101,7 @@ final class PlaceInteraction {
             if d < spec.snapRadius {
                 snap()
             } else {
-                drop()
+                drop(quietly: phase == .cancelled)
             }
         }
     }
@@ -124,12 +124,12 @@ final class PlaceInteraction {
         }
     }
 
-    private func drop() {
+    private func drop(quietly: Bool = false) {
         busy = true
         let from = spec.current()
         var to = from
         to.pos.y = restY
-        session.hint("Almost — drop it on the glowing outline")
+        if !quietly { session.hint("Almost — drop it on the glowing outline") }
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {

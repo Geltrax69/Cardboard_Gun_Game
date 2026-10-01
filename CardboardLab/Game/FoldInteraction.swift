@@ -99,7 +99,10 @@ final class FoldInteraction {
             lastFinger = finger
             p = clampf(p + progressDelta(for: delta), min(spec.from, spec.to), max(spec.from, spec.to))
             spec.apply(p)
-        case .ended, .cancelled:
+        case .cancelled:
+            // Second finger → camera rotation: leave the flap where it is.
+            dragging = false
+        case .ended:
             guard dragging else { return }
             dragging = false
             let progress = (p - spec.from) / (spec.to - spec.from)

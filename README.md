@@ -31,6 +31,8 @@ files you add there are compiled with no project edits.
 | **Fold** | Drag the highlighted flap along the curved blue arrow. Past ~70% it snaps: *Perfect fold*. |
 | **Glue** | Drag the glue bottle along the dotted blue guide on the tab. |
 | **Align / connect** | Drag the piece onto its glowing mint outline; it snaps into place: *Tab aligned*. |
+| **Rotate the view** | Two-finger drag orbits around the build (or one finger when no tool is active, e.g. while *Next* is showing). |
+| **Zoom** | Pinch. The ↶ button next to Home returns to the step's own framing. |
 
 There are no timers, lives or score loss. Straying off a line only shows *Try following
 the highlighted line*. A ghost finger demonstrates each gesture the first time and

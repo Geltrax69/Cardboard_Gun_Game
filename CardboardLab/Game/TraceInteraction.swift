@@ -195,7 +195,9 @@ final class TraceInteraction {
         case .moved:
             if touching { feed(p) }
         case .ended, .cancelled:
-            if touching, !advancedThisTouch, case .offPath = lastFeed {
+            // A cancelled touch usually means a second finger turned it into a camera
+            // rotation — no hint for that.
+            if phase == .ended, touching, !advancedThisTouch, case .offPath = lastFeed {
                 session.hint(hintText)
             }
             touching = false

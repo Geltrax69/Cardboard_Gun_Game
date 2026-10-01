@@ -21,6 +21,12 @@ struct CraftHUDView: View {
                         HomeButton(size: 64 * s) { engine.goToMenu() }
                         RoundIconButton(systemName: "questionmark", size: 50 * s) { engine.showGuide(startsCraft: false) }
                             .padding(.top, 7 * s)
+                        if engine.viewAdjusted {
+                            RoundIconButton(systemName: "arrow.uturn.backward", size: 50 * s) { engine.resetView() }
+                                .padding(.top, 7 * s)
+                                .transition(.scale(scale: 0.6).combined(with: .opacity))
+                                .accessibilityLabel("Reset view")
+                        }
                         Spacer()
                         craftBadge(s)
                     }
@@ -87,6 +93,7 @@ struct CraftHUDView: View {
             }
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.75), value: hud.nextVisible)
+        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: engine.viewAdjusted)
         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: hud.finish)
         .animation(.easeOut(duration: 0.3), value: hud.titleID)
     }
