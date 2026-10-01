@@ -43,6 +43,9 @@ final class TraceInteraction {
     private let hintText: String
 
     private var done = false
+    /// Polled every frame; returning true abandons the trace (Cancel button).
+    var isCancelled: () -> Bool = { false }
+    struct Cancelled: Error {}
     private var touching = false
     private var advancedThisTouch = false
     private var lastFeed: PathTracer.Feed = .holding
@@ -219,7 +222,8 @@ final class TraceInteraction {
         if hintsOn { showGhost() }
         defer { finish() }
 
-        try await tw.until { [weak self] in self?.done ?? true }
+        try await tw.until { [weak self] in (self?.done ?? true) || (self?.isCancelled() ?? false) }
+        if !done && isCancelled() { throw Cancelled() }
 
         // Lift the tool off the board.
         let end = node.pose

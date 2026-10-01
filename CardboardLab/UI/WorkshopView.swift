@@ -18,6 +18,10 @@ struct WorkshopView: View {
                 HStack(alignment: .bottom) {
                     options(s)
                     Spacer()
+                    if model.cutting {
+                        cancelButton(s)
+                            .transition(.scale(scale: 0.8).combined(with: .opacity))
+                    }
                 }
                 .padding(.leading, 120 * s)
                 .padding(.trailing, 20 * s)
@@ -36,6 +40,10 @@ struct WorkshopView: View {
                 .padding(.trailing, 18 * s)
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             }
+            if model.showSheetPicker {
+                sheetPicker(s)
+                    .transition(.scale(scale: 0.9).combined(with: .opacity))
+            }
             if model.showHelp {
                 helpCard(s)
                     .transition(.scale(scale: 0.9).combined(with: .opacity))
@@ -44,6 +52,8 @@ struct WorkshopView: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: model.tool)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: model.hasSelection)
         .animation(.easeOut(duration: 0.25), value: model.showHelp)
+        .animation(.easeOut(duration: 0.25), value: model.showSheetPicker)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: model.cutting)
     }
 
     // MARK: Top bar
@@ -66,7 +76,10 @@ struct WorkshopView: View {
                 model.send?(.toggleView)
             }
             barButton("scope", "Re-centre", s) { model.send?(.resetView) }
-            barButton("doc.badge.plus", "New sheet", s, highlight: true) { model.send?(.newSheet) }
+            barButton("doc.badge.plus", "New sheet", s, highlight: true) {
+                model.showHelp = false
+                model.showSheetPicker.toggle()
+            }
             barButton(confirmClear ? "exclamationmark.triangle.fill" : "trash", confirmClear ? "Sure?" : "Clear", s) {
                 if confirmClear {
                     confirmClear = false
@@ -152,19 +165,36 @@ struct WorkshopView: View {
     private func options(_ s: CGFloat) -> some View {
         switch model.tool {
         case .cut:
-            optionBar(s) {
-                ForEach(WorkshopModel.Shape.allCases, id: \.self) { shape in
-                    chip(shape.title, icon: shape.symbol, on: model.shape == shape, s) { model.shape = shape }
-                }
-                divider(s)
-                chip("Quick cut", icon: model.quickCut ? "bolt.fill" : "bolt.slash", on: model.quickCut, s) { model.quickCut.toggle() }
+            VStack(alignment: .leading, spacing: 8 * s) {
                 if model.shape == .lines && model.linePoints > 0 {
-                    divider(s)
-                    chip("Undo point", icon: "delete.left", on: false, s) { model.send?(.undoPoint) }
-                    if model.linePoints >= 3 {
-                        chip("Close shape", icon: "checkmark", on: true, s) { model.send?(.closeShape) }
+                    optionBar(s) {
+                        chip("Undo point", icon: "delete.left", on: false, s) { model.send?(.undoPoint) }
+                        if model.linePoints >= 2 {
+                            chip("Cut along", icon: "scissors", on: false, s) { model.send?(.cutAlong) }
+                        }
+                        if model.linePoints >= 3 {
+                            chip("Close shape", icon: "checkmark", on: true, s) { model.send?(.closeShape) }
+                        }
+                        chip("Cancel", icon: "xmark", on: false, s, danger: true) { model.send?(.cancelDrawing) }
                     }
                 }
+                optionBar(s) {
+                    ForEach(WorkshopModel.Shape.allCases, id: \.self) { shape in
+                        chip(shape.title, icon: shape.symbol, on: model.shape == shape, s) { model.shape = shape }
+                    }
+                    divider(s)
+                    chip("Quick cut", icon: model.quickCut ? "bolt.fill" : "bolt.slash", on: model.quickCut, s) { model.quickCut.toggle() }
+                }
+            }
+        case .crease:
+            optionBar(s) {
+                chip("Valley", icon: "chevron.down", on: model.creaseKind == .valley, s) { model.creaseKind = .valley }
+                chip("Mountain", icon: "chevron.up", on: model.creaseKind == .mountain, s) { model.creaseKind = .mountain }
+                Text(model.creaseKind == .valley ? "Dashed line · the flap folds up towards you"
+                                                 : "Dash-dot line · the flap folds down, away from you")
+                    .font(LabFont.semibold(13 * s))
+                    .foregroundStyle(Color.labPaper.opacity(0.8))
+                    .padding(.horizontal, 6 * s)
             }
         case .paint:
             optionBar(s) {
@@ -172,18 +202,42 @@ struct WorkshopView: View {
                 chip("Whole piece", icon: "cube.fill", on: model.paintWhole, s) { model.paintWhole = true }
             }
         case .move:
-            if model.hasSelection {
-                optionBar(s) {
-                    ForEach(WorkshopModel.MoveAction.allCases.filter { $0 != .unglue || model.selectionGlued }, id: \.self) { action in
-                        chip(action.title, icon: action.symbol, on: false, s, danger: action == .delete) {
-                            model.send?(.move(action))
+            VStack(alignment: .leading, spacing: 8 * s) {
+                if model.hasSelection {
+                    optionBar(s) {
+                        ForEach(WorkshopModel.MoveAction.allCases.filter { $0 != .unglue || model.selectionGlued }, id: \.self) { action in
+                            chip(action.title, icon: action.symbol, on: false, s, danger: action == .delete) {
+                                model.send?(.move(action))
+                            }
                         }
+                    }
+                }
+                optionBar(s) {
+                    ForEach(WorkshopModel.MoveMode.allCases, id: \.self) { mode in
+                        chip(mode.title, icon: mode.symbol, on: model.moveMode == mode, s) { model.moveMode = mode }
                     }
                 }
             }
         default:
             EmptyView()
         }
+    }
+
+    /// Stops the cut being traced; nothing changes on the bench.
+    private func cancelButton(_ s: CGFloat) -> some View {
+        Button {
+            engine.sound.play(.tap)
+            model.cancelCut()
+        } label: {
+            Label("Cancel cut", systemImage: "xmark.circle.fill")
+                .font(LabFont.heavy(18 * s))
+                .foregroundStyle(Color.labPaper)
+                .padding(.horizontal, 20 * s)
+                .frame(height: 52 * s)
+                .background(Capsule().fill(Color.labRed))
+                .overlay(Capsule().stroke(Color.labInk, lineWidth: 2.5))
+        }
+        .buttonStyle(PressableStyle())
     }
 
     private func optionBar<C: View>(_ s: CGFloat, @ViewBuilder content: () -> C) -> some View {
@@ -216,16 +270,118 @@ struct WorkshopView: View {
         .disabled(model.busy)
     }
 
+    // MARK: New sheet
+
+    /// Pick a sheet size (big ones fit long swords) and any cardboard, then add it.
+    private func sheetPicker(_ s: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 14 * s) {
+            HStack {
+                OutlinedText(text: "New sheet", font: LabFont.black(28 * s), fill: .labCardboardLight, width: 2.5 * s, depth: 3 * s)
+                Spacer()
+                Button {
+                    model.showSheetPicker = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16 * s, weight: .heavy))
+                        .foregroundStyle(Color.labPaper)
+                        .frame(width: 40 * s, height: 40 * s)
+                        .background(Circle().fill(Color.labTable))
+                }
+                .buttonStyle(PressableStyle())
+            }
+            Text("Size").font(LabFont.heavy(15 * s)).foregroundStyle(Color.labPaper.opacity(0.75))
+            HStack(spacing: 10 * s) {
+                ForEach(Workshop.sheetSizes.indices, id: \.self) { i in
+                    sizeCard(i, s)
+                }
+            }
+            Text("Cardboard").font(LabFont.heavy(15 * s)).foregroundStyle(Color.labPaper.opacity(0.75))
+            let stocks = CardboardStock.all
+            let rows = stride(from: 0, to: stocks.count, by: 3).map { Array(stocks[$0..<min($0 + 3, stocks.count)]) }
+            VStack(alignment: .leading, spacing: 8 * s) {
+                ForEach(rows.indices, id: \.self) { r in
+                    HStack(spacing: 8 * s) {
+                        ForEach(rows[r]) { stock in
+                            stockChip(stock, s)
+                        }
+                    }
+                }
+            }
+            Button {
+                engine.sound.play(.tap)
+                model.send?(.newSheet)
+            } label: {
+                Label("Add sheet", systemImage: "plus")
+            }
+            .buttonStyle(SettingsButtonStyle(fill: .labRed))
+        }
+        .padding(24 * s)
+        .frame(width: 600 * s)
+        .background(RoundedRectangle(cornerRadius: 28 * s, style: .continuous).fill(Color.labInk))
+        .overlay(RoundedRectangle(cornerRadius: 28 * s, style: .continuous).stroke(Color.labMat, lineWidth: 3))
+    }
+
+    private func sizeCard(_ i: Int, _ s: CGFloat) -> some View {
+        let entry = Workshop.sheetSizes[i]
+        let on = model.sheetSize == i
+        // Sheets drawn to scale against the biggest one.
+        let k = 70 * s / CGFloat(Workshop.sheetSizes.map { $0.size.x }.max() ?? 1)
+        return Button {
+            engine.sound.play(.tap)
+            model.sheetSize = i
+        } label: {
+            VStack(spacing: 6 * s) {
+                RoundedRectangle(cornerRadius: 3 * s)
+                    .fill(Color(hex: CardboardStock.byID(model.sheetStock).top))
+                    .frame(width: CGFloat(entry.size.x) * k, height: CGFloat(entry.size.y) * k)
+                    .overlay(RoundedRectangle(cornerRadius: 3 * s).stroke(Color.labInk, lineWidth: 1.5))
+                    .frame(height: 50 * s)
+                Text(entry.name).font(LabFont.heavy(14 * s))
+                Text("\(Int(entry.size.x)) × \(Int(entry.size.y))").font(LabFont.semibold(12 * s)).opacity(0.75)
+            }
+            .foregroundStyle(on ? Color.labInk : Color.labPaper)
+            .frame(width: 124 * s, height: 112 * s)
+            .background(RoundedRectangle(cornerRadius: 16 * s, style: .continuous).fill(on ? Color.labYellow : Color.labTable))
+            .overlay(RoundedRectangle(cornerRadius: 16 * s, style: .continuous).stroke(on ? Color.labInk : Color.labMat, lineWidth: 2))
+        }
+        .buttonStyle(PressableStyle())
+    }
+
+    private func stockChip(_ stock: CardboardStock, _ s: CGFloat) -> some View {
+        let on = model.sheetStock == stock.id
+        return Button {
+            engine.sound.play(.tap)
+            model.sheetStock = stock.id
+        } label: {
+            HStack(spacing: 8 * s) {
+                Circle()
+                    .fill(Color(hex: stock.top))
+                    .frame(width: 22 * s, height: 22 * s)
+                    .overlay(Circle().stroke(Color.labInk, lineWidth: 1.5))
+                Text(stock.name)
+                    .font(LabFont.heavy(13 * s))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .foregroundStyle(on ? Color.labInk : Color.labPaper)
+            .padding(.horizontal, 12 * s)
+            .frame(width: 176 * s, height: 42 * s, alignment: .leading)
+            .background(Capsule().fill(on ? Color.labYellow : Color.labTable))
+            .overlay(Capsule().stroke(on ? Color.labInk : Color.labMat, lineWidth: 1.5))
+        }
+        .buttonStyle(PressableStyle())
+    }
+
     // MARK: Help
 
     private func helpCard(_ s: CGFloat) -> some View {
         let steps: [(String, String, String)] = [
-            ("scissors", "Cut", "Pick a shape — freehand, straight lines, rectangle or circle — and draw it on a sheet. Then cut along the red line."),
-            ("line.diagonal", "Fold line", "Drag a line across a piece. It becomes a blue dashed crease."),
-            ("arrow.uturn.up", "Fold", "Grab the flap beside a crease and drag it up or down to any angle."),
+            ("scissors", "Cut", "Draw anywhere on any piece: a closed shape punches it out, a line from edge to edge slices it in two. Then trace the red line — or tap Cancel."),
+            ("line.diagonal", "Fold line", "Pick Valley (folds up) or Mountain (folds down) and drag a line across a piece. It snaps straight."),
+            ("arrow.uturn.up", "Fold", "Grab the flap beside a fold line and drag it to any angle."),
             ("paintbrush.fill", "Paint", "Choose any colour on the wheel and brush it over faces, pieces or whole sheets."),
-            ("hand.draw.fill", "Move & glue", "Drag pieces around, turn and tilt them, stack them up and glue them together."),
-            ("doc.badge.plus", "Unlimited cardboard", "Tap New sheet whenever you run out. Undo fixes any slip, and your bench is saved."),
+            ("hand.draw.fill", "Move & glue", "Slide, lift or turn any piece or whole sheet, stand it up, stack it and glue it on."),
+            ("doc.badge.plus", "Unlimited cardboard", "New sheet gives you any size — Long and Huge fit swords — in any cardboard. Undo fixes any slip."),
         ]
         return VStack(alignment: .leading, spacing: 12 * s) {
             OutlinedText(text: "Make anything", font: LabFont.black(30 * s), fill: .labCardboardLight, width: 2.5 * s, depth: 3 * s)

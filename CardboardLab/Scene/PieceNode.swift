@@ -54,10 +54,16 @@ final class PieceNode {
         // Fold lines live on the parent panel so they stay put while the flap rises.
         for p in def.panels {
             guard let h = p.hinge, let parent = p.parent, let parentNode = panelNodes[parent] else { continue }
+            // Valley folds are dashed, mountain folds dash-dot (origami notation).
             var dash = MeshData()
-            MeshBuilder.dashes(h.a.onMat(t + 0.006), h.b.onMat(t + 0.006), width: 0.06, into: &dash)
             var dashUnder = MeshData()
-            MeshBuilder.dashes(h.a.onMat(-0.006), h.b.onMat(-0.006), width: 0.06, normal: V3(0, -1, 0), into: &dashUnder)
+            if h.kind == .mountain {
+                MeshBuilder.dashDot(h.a.onMat(t + 0.006), h.b.onMat(t + 0.006), width: 0.06, into: &dash)
+                MeshBuilder.dashDot(h.a.onMat(-0.006), h.b.onMat(-0.006), width: 0.06, normal: V3(0, -1, 0), into: &dashUnder)
+            } else {
+                MeshBuilder.dashes(h.a.onMat(t + 0.006), h.b.onMat(t + 0.006), width: 0.06, into: &dash)
+                MeshBuilder.dashes(h.a.onMat(-0.006), h.b.onMat(-0.006), width: 0.06, normal: V3(0, -1, 0), into: &dashUnder)
+            }
             dash.append(dashUnder)
             let dashNode = SceneBridge.node(dash, [Mat.unlit(Palette.blue)], name: "fold-\(p.id)")
             dashNode.castsShadow = false

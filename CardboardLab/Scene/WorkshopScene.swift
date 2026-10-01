@@ -3,40 +3,40 @@ import UIKit
 
 extension PaintColor {
     var uiColor: UIColor { UIColor(red: CGFloat(r), green: CGFloat(g), blue: CGFloat(b), alpha: 1) }
+
+    func mixed(with o: PaintColor, _ k: Float) -> PaintColor {
+        PaintColor(r: r + (o.r - r) * k, g: g + (o.g - g) * k, b: b + (o.b - b) * k)
+    }
+
+    /// Workshop tints: the selected piece and the piece waiting to be glued.
+    static let selectTint = PaintColor(hex: "#97E1BE")
+    static let glueTint = PaintColor(hex: "#FADC70")
 }
 
-/// The free mode workbench in 3D: one node per sheet and a PieceNode per piece, kept in
+/// The free mode workbench in 3D: a PieceNode per piece (sheets are pieces too), kept in
 /// step with `WorkshopState`. `apply` diffs two states so live edits, commits and undo
 /// all go through the same path. Glued pieces are parented to the piece they're glued to.
 @MainActor
 final class WorkshopScene {
     let root = SCNNode()
-    let stock: CardboardStock
-    private(set) var sheetNodes: [String: SCNNode] = [:]
+    /// Stock for pieces that don't name one.
+    let defaultStock: CardboardStock
     private(set) var pieceNodes: [String: PieceNode] = [:]
     private var state = WorkshopState()
 
-    var t: Float { stock.thickness }
-
     init(stock: CardboardStock) {
-        self.stock = stock
+        defaultStock = stock
         root.name = "workshop"
     }
+
+    func stock(of p: FreePiece) -> CardboardStock { p.stock.map { CardboardStock.byID($0) } ?? defaultStock }
 
     // MARK: Sync
 
     func apply(_ new: WorkshopState) {
         let old = state
         state = new
-        // Sheets.
-        for (id, node) in sheetNodes where new.sheet(id) == nil {
-            node.removeFromParentNode()
-            sheetNodes[id] = nil
-        }
-        for s in new.sheets where old.sheet(s.id) != s || sheetNodes[s.id] == nil {
-            buildSheet(s)
-        }
-        // Pieces: drop removed ones (their glued children were re-homed in the state).
+        // Drop removed pieces (their glued children were re-homed in the state).
         for (id, node) in pieceNodes where new.piece(id) == nil {
             node.root.removeFromParentNode()
             pieceNodes[id] = nil
@@ -44,7 +44,7 @@ final class WorkshopScene {
         var replaced = Set<String>()
         for p in gluedOrder(new) {
             let o = old.piece(p.id)
-            if o == nil || pieceNodes[p.id] == nil || shape(o!) != shape(p) {
+            if o == nil || pieceNodes[p.id] == nil || shape(o!) != shape(p) || o!.stock != p.stock {
                 buildPiece(p)
                 replaced.insert(p.id)
             } else {
@@ -80,7 +80,7 @@ final class WorkshopScene {
         return out
     }
 
-    /// Geometry identity of a piece (outlines and creases, not angles or paint).
+    /// Geometry identity of a piece (outlines, holes and creases, not angles or paint).
     private func shape(_ p: FreePiece) -> [FreePanel] {
         p.panels.map { panel in
             var q = panel
@@ -91,28 +91,9 @@ final class WorkshopScene {
         }
     }
 
-    private func buildSheet(_ s: FreeSheet) {
-        sheetNodes[s.id]?.removeFromParentNode()
-        let outline = s.outline
-        var edges = (0..<4).map { (outline[$0], outline[($0 + 1) % 4]) }
-        for h in s.holes {
-            for i in 0..<h.count { edges.append((h[i], h[(i + 1) % h.count])) }
-        }
-        let mesh = MeshBuilder.cardboard(outline: outline, holes: s.holes, thickness: t, inkEdges: edges, inkWidth: 0.05)
-        let mats = CardboardMaterials(stock: stock)
-        var list = mats.array
-        if let top = s.top { list[0] = Mat.lambert(top.uiColor) }
-        if let under = s.under { list[1] = Mat.lambert(under.uiColor) }
-        let node = SceneBridge.node(mesh, list, name: "sheet-\(s.id)")
-        node.castsShadow = true
-        node.setPosition(s.center)
-        root.addChildNode(node)
-        sheetNodes[s.id] = node
-    }
-
     private func buildPiece(_ p: FreePiece) {
         let oldRoot = pieceNodes[p.id]?.root
-        let node = PieceNode(def: p.pieceDef, stock: stock, showFoldLines: true, inkVisible: true)
+        let node = PieceNode(def: p.pieceDef, stock: stock(of: p), showFoldLines: true, inkVisible: true)
         node.setAngles(p.angles)
         for panel in p.panels where panel.parent != nil { node.setCrease(panel.id, 1) }
         for panel in p.panels where panel.top != nil || panel.under != nil {
@@ -145,6 +126,8 @@ final class WorkshopScene {
         /// Hit point in the piece's flat frame.
         var local: V3
         var world: V3
+        /// Height of the touched face in the flat frame (thickness for the top, 0 below).
+        var faceY: Float
     }
 
     /// World pose of a panel of a piece, as currently displayed.
@@ -153,55 +136,40 @@ final class WorkshopScene {
         return state.worldPose(piece) * node.rig.pose(of: panel)
     }
 
-    /// Nearest piece face under a screen ray.
+    /// Nearest piece face under a screen ray (holes let it through).
     func hitPanel(origin o: V3, dir d: V3) -> PanelHit? {
         var best: PanelHit?
         for p in state.pieces {
             guard let node = pieceNodes[p.id] else { continue }
             let base = state.worldPose(p.id)
+            let t = node.stock.thickness
             for panel in p.panels {
                 let pose = base * node.rig.pose(of: panel.id)
                 let inv = pose.inverse
                 let lo = inv.apply(o), ld = inv.applyVector(d)
-                guard let h = Poly.raySlab(origin: lo, dir: ld, outline: panel.outline, thickness: t) else { continue }
+                guard let h = Poly.raySlab(origin: lo, dir: ld, outline: panel.outline, holes: panel.holes, thickness: t) else { continue }
                 if best == nil || h.distance < best!.distance {
-                    let local = lo + ld * h.distance
-                    best = PanelHit(piece: p.id, panel: panel.id, top: h.top, distance: h.distance, local: local, world: o + d * h.distance)
+                    best = PanelHit(piece: p.id, panel: panel.id, top: h.top, distance: h.distance, local: lo + ld * h.distance,
+                                    world: o + d * h.distance, faceY: h.top ? t : 0)
                 }
             }
         }
         return best
     }
 
-    struct SheetHit {
-        var sheet: String
-        /// Point in sheet coordinates (centred).
-        var local: V2
-        var distance: Float
-        var top: Bool
-    }
-
-    /// Sheet surface under a screen ray (outside the holes).
-    func hitSheet(origin o: V3, dir d: V3) -> SheetHit? {
-        var best: SheetHit?
-        for s in state.sheets {
-            let lo = o - s.center
-            guard let h = Poly.raySlab(origin: lo, dir: d, outline: s.outline, thickness: t) else { continue }
-            let q = (lo + d * h.distance).xz
-            if s.holes.contains(where: { Poly.contains($0, q) }) { continue }
-            if best == nil || h.distance < best!.distance { best = SheetHit(sheet: s.id, local: q, distance: h.distance, top: h.top) }
-        }
-        return best
-    }
-
-    /// Point on a sheet's top plane under a ray (even over holes or past the edge), for
-    /// drawing strokes that wander a little.
-    func sheetPlanePoint(_ sheet: String, origin o: V3, dir d: V3) -> V2? {
-        guard let s = state.sheet(sheet), abs(d.y) > 1e-5 else { return nil }
-        let k = (s.center.y + t - o.y) / d.y
+    /// Where a ray meets the plane of a panel's face, in the piece's flat frame (works
+    /// past the panel's edges, so strokes can start and end off the piece).
+    func panelPlanePoint(_ piece: String, _ panel: String, faceY: Float, origin o: V3, dir d: V3) -> V2? {
+        let pose = panelWorld(piece, panel)
+        let inv = pose.inverse
+        let lo = inv.apply(o), ld = inv.applyVector(d)
+        guard abs(ld.y) > 1e-5 else { return nil }
+        let k = (faceY - lo.y) / ld.y
         guard k > 0 else { return nil }
-        return (o + d * k - s.center).xz
+        return (lo + ld * k).xz
     }
+
+    func thickness(_ piece: String) -> Float { pieceNodes[piece]?.stock.thickness ?? defaultStock.thickness }
 
     /// World bounds of a piece and everything glued to it.
     func groupBounds(_ rootID: String) -> (min: V3, max: V3) {
@@ -229,17 +197,20 @@ final class WorkshopScene {
     // MARK: Selection look
 
     private var selectedID: String?
-    private var selectedColor = Palette.mint
+    private var selectedColor = PaintColor.selectTint
 
-    /// Tints one piece (the selection); only the pieces that change are touched.
-    func setSelected(_ id: String?, color: UIColor = Palette.mint) {
-        if let old = selectedID, old != id || color != selectedColor, let node = pieceNodes[old] {
+    /// Tints one piece (the selection) while keeping its paint readable; only the pieces
+    /// that change are touched.
+    func setSelected(_ id: String?, color tint: PaintColor = PaintColor.selectTint) {
+        if let old = selectedID, old != id || tint != selectedColor, let node = pieceNodes[old] {
             for panel in node.def.panels { node.highlight(panel.id, color: nil) }
         }
         selectedID = id
-        selectedColor = color
-        if let id, let node = pieceNodes[id] {
-            for panel in node.def.panels { node.highlight(panel.id, color: color) }
+        selectedColor = tint
+        guard let id, let node = pieceNodes[id], let piece = state.piece(id) else { return }
+        let bare = PaintColor(hex: node.stock.top)
+        for panel in piece.panels {
+            node.highlight(panel.id, color: (panel.top ?? bare).mixed(with: tint, 0.55).uiColor)
         }
     }
 }

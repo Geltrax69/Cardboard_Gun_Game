@@ -72,19 +72,22 @@ There are no parts to pick: you draw, cut, fold, paint and build whatever you li
 
 | Tool | How it works |
 |---|---|
-| **Cut** | Choose *Freehand*, *Straight lines* (tap the corners, tap the first one again to close), *Rectangle* or *Circle* and draw on a sheet. The shape turns into a red cut line; trace it with the craft knife, or switch on *Quick cut* and the knife does it. The piece pops out and the sheet keeps the hole. |
-| **Fold line** | Drag a line across any piece: it becomes a blue dashed crease, scored by the bone folder. Lines may run through corners or along earlier creases (box nets work), but can't cut across another fold. |
-| **Fold** | Grab the flap beside a crease and drag it up or down to any angle (it snaps to 15° steps near them; 90° and 180° are *Perfect folds*). |
-| **Paint** | A full colour wheel (hue round the rim, saturation toward the centre), a brightness slider, ready-made shades and your recent colours. Tap or brush over faces — top or underside — or switch to *Whole piece*. Painting a sheet colours every piece cut from it. |
-| **Move** | Drag pieces around the table. Tap one for Turn, Tilt, Roll, Up, Down, Flip, To mat, Copy, Unglue and Delete. |
+| **Cut** | Draw anywhere on any piece or sheet — strokes may start and end off the edge. A closed shape (*Freehand*, *Lines*, *Rectangle*, *Circle*) punches a piece out, or bites a notch where it crosses the edge; an open line (*Freehand*, *Straight cut*, or *Lines* → *Cut along*) that runs edge to edge slices the piece in two. Every cut is checked first, so you only trace cuts that can happen. Trace the red line with the craft knife, switch on *Quick cut*, or tap **Cancel cut** to leave the board as it was. |
+| **Fold line** | Pick **Valley** (blue dashes, the flap folds up) or **Mountain** (blue dash-dot, the flap folds down) and drag a line across a piece; it lands exactly where you drew it on that face and snaps straight. Lines may run through corners or along earlier creases (box nets work), but can't cross another fold or a hole. |
+| **Fold** | Grab the flap beside a fold line and drag it to any angle: up for valley lines, down for mountain lines (it snaps to 15° steps near them; 90° and 180° are *Perfect folds*). A piece folded downward rests on its flaps instead of sinking into the table. |
+| **Paint** | A full colour wheel (hue round the rim, saturation toward the centre), a brightness slider, ready-made shades and your recent colours. Tap or brush over faces — top or underside — or switch to *Whole piece*. |
+| **Move** | Drag any piece or whole sheet. **Slide** moves it across the table, **Lift** raises and lowers it, **Turn** spins it freely in 3D. Tap one for Turn 45°, Stand up, Flip, To table, Copy, Unglue and Delete. |
 | **Glue** | Tap a piece, then the piece to stick it onto: they move together from then on. |
 | **Look** | Drag to slide around the table; two fingers turn the view, pinch zooms. |
 
-**New sheet** drops a fresh sheet on the next free spot of the table, as often as you
-like. **Undo** steps back through every change, **Top view / 3D view** switches the
-camera, and the whole bench is saved automatically (`WorkshopStore`) so you can keep
-adding detail next time. The model lives in `Core/Workshop.swift` (shapes, creases,
-colours, glue — all unit tested); `Game/WorkshopSession.swift` runs the tools.
+**New sheet** opens the sheet picker: *Small* 14×10, *Large* 20×14, *Long* 28×10 (room
+for a long sword) or *Huge* 28×20, in any cardboard, dropped on the next free spot of the
+table as often as you like. Sheets are ordinary pieces, so they can be moved, turned,
+painted and glued too. **Undo** steps back through every change, **Top view / 3D view**
+switches the camera, and the whole bench is saved automatically (`WorkshopStore`, older
+saves are migrated) so you can keep adding detail next time. The model lives in
+`Core/Workshop.swift` (cuts, slices, creases, colours, glue — all unit tested);
+`Game/WorkshopSession.swift` runs the tools.
 
 ### A weapon, step by step
 

@@ -20,9 +20,10 @@ enum WorkshopStore {
     }
 }
 
-/// Free mode: an open workbench with unlimited cardboard. The player draws shapes on a
-/// sheet and cuts them out, draws fold lines across pieces and folds them to any angle,
-/// paints any face any colour, and moves, turns, stacks and glues pieces into 3D builds.
+/// Free mode: an open workbench with unlimited cardboard. Everything on the table is a
+/// piece (fresh sheets included): draw on any of them to punch shapes out or slice them
+/// apart, draw valley or mountain fold lines and fold them, paint any face, and slide,
+/// lift, turn, stack and glue pieces into 3D builds.
 ///
 /// Every change is a commit to `WorkshopState` (undoable, saved to disk); the scene
 /// follows the state. Gestures go to the active tool; buttons arrive as commands.
@@ -36,24 +37,31 @@ final class WorkshopSession: BuildSession {
 
     private enum Job {
         case command(WorkshopCommand)
-        case cut([V2], sheet: String)
+        case cut(Target, loop: [V2]?, slice: [V2]?)
         case score(piece: String, panel: String)
     }
 
-    // Gesture state.
+    /// The panel face a stroke is drawn on.
+    private struct Target: Equatable {
+        var piece: String
+        var panel: String
+        var faceY: Float
+    }
+
     private enum Drag {
-        case draw(sheet: String, start: V2)
-        case crease(piece: String, panel: String, a: V2, b: V2, faceY: Float)
-        case fold(piece: String, panel: String, grab: V3, angle: Float)
-        case move(root: String, start: Pose, planeY: Float, from: V3, picked: String, moved: Bool)
+        /// Drawing a cut or fold line: screen points so far.
+        case stroke
+        case fold(piece: String, panel: String, grab: V3, angle: Float, kind: FoldKind)
+        case move(root: String, start: Pose, current: Pose, planeY: Float, from: V3, last: V2, centre: V3, moved: Bool)
         case paint
         case pan(last: V2)
         case tap(at: V2)
     }
     private var drag: Drag?
-    private var stroke: [V2] = []
+    private var target: Target?
+    private var strokeScreen: [V2] = []
+    /// Straight-lines mode: corners on the target panel (flat frame).
     private var linePoints: [V2] = []
-    private var lineSheet: String?
     private var pendingPaint: WorkshopState?
     private var selected: String?
     private var glueSource: String?
@@ -66,8 +74,6 @@ final class WorkshopSession: BuildSession {
         super.init(engine: engine, project: .freeCraft, stock: stock)
     }
 
-    private var t: Float { stock.thickness }
-
     // MARK: Run loop
 
     override func run() async throws {
@@ -75,15 +81,18 @@ final class WorkshopSession: BuildSession {
         preview.name = "workshopPreview"
         engine.craftRoot.addChildNode(scene.root)
         engine.craftRoot.addChildNode(preview)
-        if let saved = WorkshopStore.load(), !saved.sheets.isEmpty || !saved.pieces.isEmpty {
+        if var saved = WorkshopStore.load(), !saved.sheets.isEmpty || !saved.pieces.isEmpty {
+            saved.migrate(defaultStock: stock.id)
             state = saved
         } else {
-            state = WorkshopSession.freshBench()
+            state = freshBench()
             model.showHelp = true
         }
+        if model.sheetStock.isEmpty { model.sheetStock = stock.id }
         scene.apply(state)
         model.canUndo = false
         model.busy = false
+        model.cutting = false
         model.send = { [weak self] c in self?.jobs.append(.command(c)) }
         model.onToolChange = { [weak self] _ in self?.toolChanged() }
         toolChanged()
@@ -97,7 +106,7 @@ final class WorkshopSession: BuildSession {
             defer { model.busy = false }
             switch job {
             case .command(let c): try await perform(c)
-            case let .cut(shape, sheet): try await performCut(shape, sheetID: sheet)
+            case let .cut(target, loop, slice): try await performCut(target, loop: loop, slice: slice)
             case let .score(piece, panel): try await performScore(piece, panel)
             }
             model.busy = false
@@ -111,14 +120,13 @@ final class WorkshopSession: BuildSession {
         model.send = nil
         model.onToolChange = nil
         model.busy = false
+        model.cutting = false
         engine.pointerHandler = nil
     }
 
-    static func freshBench() -> WorkshopState {
+    private func freshBench() -> WorkshopState {
         var s = WorkshopState()
-        let id = s.makeID("sheet")
-        s.sheets.append(FreeSheet(id: id, size: Workshop.sheetSize, center: V3(0, 0, 0)))
-        s.activeSheet = id
+        Workshop.addSheet(size: Workshop.sheetSizes[0].size, stock: stock.id, at: V3(0, 0, 0), in: &s)
         return s
     }
 
@@ -134,7 +142,7 @@ final class WorkshopSession: BuildSession {
         change(&state)
         guard state != before else { return }
         undoStack.append(before)
-        if undoStack.count > 40 { undoStack.removeFirst() }
+        if undoStack.count > 50 { undoStack.removeFirst() }
         scene.apply(state)
         model.canUndo = true
         refreshSelection()
@@ -153,7 +161,7 @@ final class WorkshopSession: BuildSession {
 
     private func nudge(_ text: String) {
         status(text)
-        engine.toast(text, .hint, life: 1.8)
+        engine.toast(text, .hint, life: 2.0)
     }
 
     // MARK: Tools
@@ -167,9 +175,9 @@ final class WorkshopSession: BuildSession {
 
     private func clearGesture() {
         drag = nil
-        stroke = []
+        target = nil
+        strokeScreen = []
         linePoints = []
-        lineSheet = nil
         model.linePoints = 0
         if let pending = pendingPaint, pending != state { scene.apply(state) }
         pendingPaint = nil
@@ -181,8 +189,8 @@ final class WorkshopSession: BuildSession {
         guard !model.busy else { return }
         let ray = rig.orbit.ray(p)
         switch model.tool {
-        case .cut: model.shape == .lines ? linesPointer(phase, p, ray) : cutPointer(phase, ray)
-        case .crease: creasePointer(phase, p, ray)
+        case .cut: model.shape == .lines ? linesPointer(phase, p, ray) : strokePointer(phase, p, ray, crease: false)
+        case .crease: strokePointer(phase, p, ray, crease: true)
         case .fold: foldPointer(phase, p, ray)
         case .paint: paintPointer(phase, ray)
         case .move: movePointer(phase, p, ray)
@@ -191,56 +199,96 @@ final class WorkshopSession: BuildSession {
         }
     }
 
-    /// A touch that barely moved counts as a tap.
     private func isTap(_ start: V2, _ end: V2) -> Bool { start.dist(end) < 14 }
 
-    // MARK: Cut: freehand, rectangle, circle
+    private func hitTarget(_ ray: (origin: V3, dir: V3)) -> Target? {
+        scene.hitPanel(origin: ray.origin, dir: ray.dir).map { Target(piece: $0.piece, panel: $0.panel, faceY: $0.faceY) }
+    }
 
-    private func cutPointer(_ phase: PointerPhase, _ ray: (origin: V3, dir: V3)) {
+    /// A screen point on the target panel's plane (flat frame).
+    private func project(_ p: V2, onto t: Target) -> V2? {
+        let r = rig.orbit.ray(p)
+        return scene.panelPlanePoint(t.piece, t.panel, faceY: t.faceY, origin: r.origin, dir: r.dir)
+    }
+
+    // MARK: Cut and fold-line strokes
+
+    /// Cut strokes (freehand, straight, rectangle, circle) and fold lines. A stroke may
+    /// start off a piece: the first piece it passes over becomes its target, and every
+    /// point is projected onto that piece's face.
+    private func strokePointer(_ phase: PointerPhase, _ p: V2, _ ray: (origin: V3, dir: V3), crease: Bool) {
         switch phase {
         case .began:
-            guard let hit = scene.hitSheet(origin: ray.origin, dir: ray.dir), hit.top else {
-                nudge("Start drawing on a cardboard sheet — tap New sheet for more")
+            drag = .stroke
+            strokeScreen = [p]
+            target = hitTarget(ray)
+        case .moved:
+            guard case .stroke? = drag else { return }
+            if let last = strokeScreen.last, last.dist(p) < 3 { return }
+            strokeScreen.append(p)
+            if target == nil { target = hitTarget(ray) }
+            updateStrokePreview(crease: crease)
+        case .ended:
+            guard case .stroke? = drag else { return }
+            drag = nil
+            if strokeScreen.last.map({ $0.dist(p) > 1 }) ?? true { strokeScreen.append(p) }
+            defer { strokeScreen = []; target = nil }
+            guard let t = target else {
+                clearPreview()
+                nudge(crease ? "Draw the fold line across a piece" : "Draw over a piece or a sheet")
                 return
             }
-            drag = .draw(sheet: hit.sheet, start: hit.local)
-            stroke = [hit.local]
-        case .moved:
-            guard case let .draw(sheet, start)? = drag, let q = scene.sheetPlanePoint(sheet, origin: ray.origin, dir: ray.dir) else { return }
-            if model.shape == .freehand {
-                if let last = stroke.last, q.dist(last) > 0.05 { stroke.append(q) }
-            } else {
-                stroke = [start, q]
-            }
-            // Freehand shows the raw stroke under the finger; shapes show their outline.
-            showShapePreview(model.shape == .freehand ? stroke : currentShape(), sheet: sheet, closed: model.shape != .freehand)
-        case .ended:
-            guard case let .draw(sheet, _)? = drag else { return }
-            let shape = currentShape()
-            drag = nil
-            stroke = []
-            submit(shape, sheet: sheet)
+            let flat = strokeScreen.compactMap { project($0, onto: t) }
+            guard flat.count >= 2 else { clearPreview(); return }
+            crease ? finishCrease(flat, on: t) : finishCut(flat, on: t)
         case .cancelled:
             drag = nil
-            stroke = []
+            strokeScreen = []
+            target = nil
             clearPreview()
         }
     }
 
-    private func currentShape() -> [V2] {
+    private func updateStrokePreview(crease: Bool) {
+        guard let t = target else { return }
+        let flat = strokeScreen.compactMap { project($0, onto: t) }
+        guard flat.count >= 2 else { return }
+        if crease {
+            showCreasePreview(t, flat.first!, flat.last!)
+            return
+        }
+        switch model.shape {
+        case .freehand: showPreview(flat, on: t, closed: false)
+        case .straight: showPreview([flat.first!, flat.last!], on: t, closed: false)
+        case .rectangle, .circle: showPreview(shapeLoop(flat.first!, flat.last!), on: t, closed: true)
+        case .lines: break
+        }
+    }
+
+    private func shapeLoop(_ a: V2, _ b: V2) -> [V2] {
+        if model.shape == .circle {
+            let r = a.dist(b)
+            return Poly.circle(center: a, radius: r, sides: Int(clampf(r * 6, 10, 24)), phase: 0)
+        }
+        return Poly.rect(min(a.x, b.x), min(a.y, b.y), max(a.x, b.x), max(a.y, b.y))
+    }
+
+    private func finishCut(_ flat: [V2], on t: Target) {
         switch model.shape {
         case .freehand:
-            return Workshop.cleanStroke(stroke)
-        case .rectangle:
-            guard stroke.count == 2 else { return [] }
-            let a = stroke[0], b = stroke[1]
-            return Poly.rect(min(a.x, b.x), min(a.y, b.y), max(a.x, b.x), max(a.y, b.y))
-        case .circle:
-            guard stroke.count == 2 else { return [] }
-            let r = stroke[0].dist(stroke[1])
-            return Poly.circle(center: stroke[0], radius: r, sides: Int(clampf(r * 6, 10, 24)), phase: 0)
+            let length = zip(flat, flat.dropFirst()).reduce(Float(0)) { $0 + $1.0.dist($1.1) }
+            let closed = length > 1.5 && flat.first!.dist(flat.last!) < max(0.6, length * 0.12)
+            if closed {
+                submitCut(t, loop: Workshop.cleanStroke(flat), slice: nil)
+            } else {
+                submitCut(t, loop: nil, slice: Workshop.cleanPath(flat))
+            }
+        case .straight:
+            submitCut(t, loop: nil, slice: [flat.first!, flat.last!])
+        case .rectangle, .circle:
+            submitCut(t, loop: shapeLoop(flat.first!, flat.last!), slice: nil)
         case .lines:
-            return linePoints
+            break
         }
     }
 
@@ -249,19 +297,19 @@ final class WorkshopSession: BuildSession {
     private func linesPointer(_ phase: PointerPhase, _ p: V2, _ ray: (origin: V3, dir: V3)) {
         switch phase {
         case .began:
-            if lineSheet == nil {
-                guard let hit = scene.hitSheet(origin: ray.origin, dir: ray.dir), hit.top else {
-                    nudge("Tap on a cardboard sheet to place the first corner")
+            if target == nil {
+                guard let t = hitTarget(ray) else {
+                    nudge("Tap on a piece or sheet to place the first corner")
                     return
                 }
-                lineSheet = hit.sheet
+                target = t
             }
             drag = .tap(at: p)
-            updateLinesPreview(ray)
+            updateLinesPreview(p)
         case .moved:
-            updateLinesPreview(ray)
+            updateLinesPreview(p)
         case .ended:
-            guard let sheet = lineSheet, let q = scene.sheetPlanePoint(sheet, origin: ray.origin, dir: ray.dir) else { return }
+            guard let t = target, let q = project(p, onto: t) else { return }
             drag = nil
             // Tapping the first corner again closes the shape.
             if linePoints.count >= 3, q.dist(linePoints[0]) < max(0.35, rig.orbit.distance * 0.012) {
@@ -271,7 +319,7 @@ final class WorkshopSession: BuildSession {
             if let last = linePoints.last, q.dist(last) < 0.15 { return }
             linePoints.append(q)
             model.linePoints = linePoints.count
-            status(linePoints.count < 3 ? "Tap the next corner" : "Tap the first corner (or Close shape) to finish")
+            status(linePoints.count < 2 ? "Tap the next corner" : "Tap the first corner to close the shape, or Cut along the line")
             updateLinesPreview(nil)
         case .cancelled:
             drag = nil
@@ -279,118 +327,146 @@ final class WorkshopSession: BuildSession {
         }
     }
 
-    private func updateLinesPreview(_ ray: (origin: V3, dir: V3)?) {
-        guard let sheet = lineSheet else { clearPreview(); return }
+    private func updateLinesPreview(_ finger: V2?) {
+        guard let t = target else { clearPreview(); return }
         var pts = linePoints
-        if let ray, let q = scene.sheetPlanePoint(sheet, origin: ray.origin, dir: ray.dir) { pts.append(q) }
-        showShapePreview(pts, sheet: sheet, closed: false, startMarker: linePoints.first)
+        if let finger, let q = project(finger, onto: t) { pts.append(q) }
+        showPreview(pts, on: t, closed: false, startMarker: linePoints.first)
     }
 
     private func closeLines() {
-        guard let sheet = lineSheet, linePoints.count >= 3 else {
+        guard let t = target, linePoints.count >= 3 else {
             nudge("Place at least three corners first")
             return
         }
-        let shape = Poly.signedArea(linePoints) < 0 ? Array(linePoints.reversed()) : linePoints
-        linePoints = []
-        lineSheet = nil
-        model.linePoints = 0
-        submit(shape, sheet: sheet)
+        let loop = linePoints
+        clearDrawing()
+        submitCut(t, loop: loop, slice: nil)
     }
 
-    /// Checks a drawn shape and queues the cut, or explains what's wrong.
-    private func submit(_ shape: [V2], sheet: String) {
-        guard let s = state.sheet(sheet) else { clearPreview(); return }
-        if let problem = Workshop.checkCut(shape, in: s) {
-            clearPreview()
-            switch problem {
-            case .tooSmall: nudge("Too small to cut — draw a bigger shape")
-            case .crossesItself: nudge("The line crosses itself — try a simpler loop")
-            case .offSheet: nudge("Keep the shape inside the sheet")
-            case .overlapsHole: nudge("That overlaps a piece you already cut")
-            }
+    private func cutAlongLines() {
+        guard let t = target, linePoints.count >= 2 else {
+            nudge("Place at least two points first")
             return
         }
-        showShapePreview(shape, sheet: sheet, closed: true)
-        jobs.append(.cut(shape, sheet: sheet))
+        let path = linePoints
+        clearDrawing()
+        submitCut(t, loop: nil, slice: path)
     }
 
-    private func performCut(_ shape: [V2], sheetID: String) async throws {
-        guard let sheet = state.sheet(sheetID) else { return }
+    private func clearDrawing() {
+        linePoints = []
+        target = nil
+        model.linePoints = 0
+    }
+
+    // MARK: Cutting
+
+    private func problemText(_ p: Workshop.CutProblem) -> String {
+        switch p {
+        case .tooSmall: return "Too small to cut — draw a bigger shape"
+        case .crossesItself: return "The line crosses itself — try a simpler stroke"
+        case .missesPiece: return "Draw the cut over a piece or sheet"
+        case .crossesHole: return "That runs into a hole you already cut"
+        case .crossesFold: return "A cut can't run through a fold line — cut beside it"
+        case .needsEdge: return "Run the cut from edge to edge, or draw a closed shape"
+        case .tooManyCrossings: return "That crosses the edge too many times — keep it simpler"
+        }
+    }
+
+    /// Checks a cut on a copy of the bench first, so nobody traces a cut that can't happen.
+    private func submitCut(_ t: Target, loop: [V2]?, slice: [V2]?) {
+        var trial = state
+        let result = loop != nil ? Workshop.cutLoop(loop!, piece: t.piece, panel: t.panel, in: &trial)
+            : Workshop.slice(slice ?? [], piece: t.piece, panel: t.panel, in: &trial)
+        if case let .failure(problem) = result {
+            clearPreview()
+            nudge(problemText(problem))
+            return
+        }
+        jobs.append(.cut(t, loop: loop, slice: slice))
+    }
+
+    private func performCut(_ t: Target, loop: [V2]?, slice: [V2]?) async throws {
         clearPreview()
-        let y = sheet.center.y + t + 0.008
-        let loop = (shape + [shape[0]]).map { (sheet.center.xz + $0).onMat(y) }
-        let line = CutLineNode(points: loop, name: "free")
+        var next = state
+        let result = loop != nil ? Workshop.cutLoop(loop!, piece: t.piece, panel: t.panel, in: &next)
+            : Workshop.slice(slice ?? [], piece: t.piece, panel: t.panel, in: &next)
+        guard case let .success(newID) = result,
+              let outline = state.piece(t.piece)?.panel(t.panel)?.outline,
+              let knifeLine = Workshop.knifePath(loop: loop, slice: slice, outline: outline) else { return }
+        // The red line, on the face it was drawn on.
+        let pose = scene.panelWorld(t.piece, t.panel)
+        let lift: Float = t.faceY > 0 ? t.faceY + 0.008 : -0.008
+        var pts = knifeLine.points.map { pose.apply($0.onMat(lift)) }
+        if knifeLine.closed, let f = pts.first { pts.append(f) }
+        let normal = pose.applyVector(V3(0, t.faceY > 0 ? 1 : -1, 0))
+        let line = CutLineNode(points: pts, name: "free", normal: normal)
         engine.craftRoot.addChildNode(line.root)
         defer { line.root.removeFromParentNode() }
         let knife = engine.workspace.knife
-        if model.quickCut {
-            status("Cutting…")
-            try await autoCut(line, knife: knife)
-        } else {
-            status("Cut along the red line with the craft knife")
-            try await TraceInteraction.cut(session: self, line: line, knife: knife, showHint: hintsOn && firstCut).run()
-            firstCut = false
+        model.cancelRequested = false
+        model.cutting = true
+        defer { model.cutting = false }
+        do {
+            if model.quickCut {
+                status("Cutting…")
+                try await autoCut(line, knife: knife)
+            } else {
+                status("Cut along the red line with the craft knife — or tap Cancel")
+                let trace = TraceInteraction.cut(session: self, line: line, knife: knife, showHint: hintsOn && firstCut)
+                let model = self.model
+                trace.isCancelled = { model.cancelRequested }
+                try await trace.run()
+                firstCut = false
+            }
+        } catch is TraceInteraction.Cancelled {
+            let from = knife.pose, rest = engine.workspace.knifeRest
+            tw.start(0.6, ease: .inOutCubic) { k in knife.setPose(from.lerp(rest, k)) }
+            status("Cut cancelled")
+            return
         }
         let from = knife.pose, rest = engine.workspace.knifeRest
         tw.start(0.6, ease: .inOutCubic) { k in knife.setPose(from.lerp(rest, k)) }
-        var newID: String?
-        commit { newID = Workshop.cut(shape, from: sheetID, in: &$0) }
-        guard let id = newID, let node = scene.pieceNodes[id] else { return }
-        // The piece pops up out of the board and settles back into place.
+        commit { $0 = next }
+        guard let node = scene.pieceNodes[newID] else { return }
+        // The cut-off piece pops out of the board and settles back.
         let base = node.pose
-        engine.particles.flakes(at: base.pos + V3(0, 0.3, 0), count: 10)
+        let up = normal
+        engine.particles.flakes(at: pose.apply(V3(0, 0.3, 0)), count: 10)
         engine.sound.play(.snap, volume: 0.7)
         try await tw.tween(0.45, ease: .linear) { k in
-            node.pose = Pose(rot: base.rot, pos: base.pos + V3(0, 0.45 * sin(k * .pi), 0))
+            node.pose = Pose(rot: base.rot, pos: base.pos + up * (0.45 * sin(k * .pi)))
         }
         node.pose = base
-        success("Cut out!", at: base.pos + V3(0, 0.8, 0))
-        status("Cut out! Draw another shape, or switch to Fold line to crease it.")
+        success("Cut!", at: base.pos + V3(0, 0.8, 0))
+        status("Cut! Move it with Move, crease it with Fold line, or keep cutting.")
     }
 
     // MARK: Fold lines
 
-    private func creasePointer(_ phase: PointerPhase, _ p: V2, _ ray: (origin: V3, dir: V3)) {
-        switch phase {
-        case .began:
-            guard let hit = scene.hitPanel(origin: ray.origin, dir: ray.dir) else {
-                nudge("Start the fold line on a cut-out piece")
-                return
+    private func finishCrease(_ flat: [V2], on t: Target) {
+        clearPreview()
+        guard var piece = state.piece(t.piece), let panel = piece.panel(t.panel) else { return }
+        let a = flat.first!, b = flat.last!
+        guard a.dist(b) > 0.3 else {
+            nudge("Drag a line right across the piece")
+            return
+        }
+        let (sa, sb) = Workshop.snapCrease(a, b, outline: panel.outline)
+        switch Workshop.addCrease(&piece, panel: t.panel, sa, sb, kind: model.creaseKind) {
+        case .success(let flap):
+            commit { s in
+                if let i = s.pieceIndex(t.piece) { s.pieces[i] = piece }
             }
-            let faceY: Float = hit.top ? t : 0
-            drag = .crease(piece: hit.piece, panel: hit.panel, a: hit.local.xz, b: hit.local.xz, faceY: faceY)
-        case .moved:
-            guard case let .crease(piece, panel, a, _, faceY)? = drag else { return }
-            let pose = scene.panelWorld(piece, panel)
-            guard let w = rig.orbit.hit(p, planePoint: pose.apply(V3(0, faceY, 0)), normal: pose.applyVector(V3(0, 1, 0))) else { return }
-            let b = pose.inverse.apply(w).xz
-            drag = .crease(piece: piece, panel: panel, a: a, b: b, faceY: faceY)
-            showCreasePreview(piece, panel, a, b, faceY: faceY)
-        case .ended:
-            clearPreview()
-            guard case let .crease(pieceID, panel, a, b, _)? = drag else { return }
-            drag = nil
-            guard a.dist(b) > 0.3, var piece = state.piece(pieceID) else {
-                nudge("Drag a line right across the piece")
-                return
+            jobs.append(.score(piece: t.piece, panel: flap))
+        case .failure(let problem):
+            switch problem {
+            case .missesPanel: nudge("Draw the fold line all the way across one panel")
+            case .crossesCrease: nudge("Fold lines can't cross each other")
+            case .tooThin: nudge("Too close to the edge — move the line inward")
+            case .crossesHole: nudge("A fold line can't run through a hole")
             }
-            switch Workshop.addCrease(&piece, panel: panel, a, b) {
-            case .success(let flap):
-                commit { s in
-                    if let i = s.pieceIndex(pieceID) { s.pieces[i] = piece }
-                }
-                jobs.append(.score(piece: pieceID, panel: flap))
-            case .failure(let problem):
-                switch problem {
-                case .missesPanel: nudge("Draw the fold line all the way across one panel")
-                case .crossesCrease: nudge("Fold lines can't cross each other")
-                case .tooThin: nudge("Too close to the edge — move the line inward")
-                }
-            }
-        case .cancelled:
-            drag = nil
-            clearPreview()
         }
     }
 
@@ -400,6 +476,7 @@ final class WorkshopSession: BuildSession {
               let parent = panel.parent else { return }
         let folder = engine.workspace.boneFolder
         let pose = scene.panelWorld(pieceID, parent)
+        let t = scene.thickness(pieceID)
         let wa = pose.apply(a.onMat(t + 0.012)), wb = pose.apply(b.onMat(t + 0.012))
         let tangent = (wb - wa).unit
         let raise = radians(30)
@@ -412,8 +489,9 @@ final class WorkshopSession: BuildSession {
         }
         let fp = folder.pose, rest = engine.workspace.folderRest
         tw.start(0.6) { k in folder.setPose(fp.lerp(rest, k)) }
-        success("Fold line scored", at: mix3(wa, wb, 0.5) + V3(0, 0.8, 0))
-        status("Switch to Fold and drag the flap to bend it, or add more fold lines.")
+        let kind = panel.foldKind == .valley ? "Valley" : "Mountain"
+        success("\(kind) fold line", at: mix3(wa, wb, 0.5) + V3(0, 0.8, 0))
+        status("Switch to Fold and drag the flap \(panel.foldKind == .valley ? "up" : "down"), or add more fold lines.")
     }
 
     // MARK: Fold
@@ -431,9 +509,9 @@ final class WorkshopSession: BuildSession {
                                               : "Add a fold line first (Fold line tool)")
                 return
             }
-            drag = .fold(piece: hit.piece, panel: hit.panel, grab: hit.local, angle: panel.angle)
+            drag = .fold(piece: hit.piece, panel: hit.panel, grab: hit.local, angle: panel.angle, kind: panel.foldKind)
         case .moved:
-            guard case let .fold(pieceID, panelID, grab, angle)? = drag, let node = scene.pieceNodes[pieceID] else { return }
+            guard case let .fold(pieceID, panelID, grab, angle, kind)? = drag, let node = scene.pieceNodes[pieceID] else { return }
             let base = state.worldPose(pieceID)
             let orbit = rig.orbit
             var rigCopy = node.rig
@@ -441,32 +519,36 @@ final class WorkshopSession: BuildSession {
                 rigCopy.angles[panelID] = a
                 return orbit.screen((base * rigCopy.pose(of: panelID)).apply(grab))
             }
-            // Search near the current angle so the flap never jumps through the board.
+            // Valley folds go up, mountain folds go down; search near the current angle
+            // so the flap never jumps through the board.
+            let lo: Float = kind == .valley ? 0 : -.pi, hi: Float = kind == .valley ? .pi : 0
             var best = angle, bestD = screenPos(angle).dist(p)
-            var a = max(-Float.pi, angle - radians(60))
-            while a <= min(Float.pi, angle + radians(60)) {
+            var a = max(lo, angle - radians(60))
+            while a <= min(hi, angle + radians(60)) {
                 let d = screenPos(a).dist(p)
                 if d < bestD { bestD = d; best = a }
                 a += radians(1.5)
             }
             node.setAngle(panelID, best)
-            drag = .fold(piece: pieceID, panel: panelID, grab: grab, angle: best)
-            status("Fold: \(Int((best * 180 / .pi).rounded()))°")
+            drag = .fold(piece: pieceID, panel: panelID, grab: grab, angle: best, kind: kind)
+            status("\(kind == .valley ? "Valley" : "Mountain") fold: \(Int((abs(best) * 180 / .pi).rounded()))°")
         case .ended:
-            guard case let .fold(pieceID, panelID, _, angle)? = drag, let node = scene.pieceNodes[pieceID] else { return }
+            guard case let .fold(pieceID, panelID, _, angle, kind)? = drag, let node = scene.pieceNodes[pieceID] else { return }
             drag = nil
-            let snapped = Workshop.snapAngle(angle)
+            let snapped = Workshop.snapAngle(angle, kind: kind)
             node.setAngle(panelID, snapped)
             node.setCrease(panelID, 1)
             engine.sound.play(.fold, volume: 0.8)
             commit { s in
                 if let i = s.pieceIndex(pieceID), let j = s.pieces[i].panelIndex(panelID) { s.pieces[i].panels[j].angle = snapped }
             }
-            let deg = Int((snapped * 180 / .pi).rounded())
-            if [90, -90, 180, -180].contains(deg) { success("Perfect fold") }
-            status("Fold: \(deg)°")
+            // Folding down would poke through the table: the piece rests on its flap.
+            keepAboveTable(state.groupRoot(pieceID))
+            let deg = Int((abs(snapped) * 180 / .pi).rounded())
+            if deg == 90 || deg == 180 { success("Perfect fold") }
+            status("\(kind == .valley ? "Valley" : "Mountain") fold: \(deg)°")
         case .cancelled:
-            if case let .fold(pieceID, _, _, _)? = drag, let piece = state.piece(pieceID) {
+            if case let .fold(pieceID, _, _, _, _)? = drag, let piece = state.piece(pieceID) {
                 scene.pieceNodes[pieceID]?.setAngles(piece.angles)
             }
             drag = nil
@@ -500,38 +582,23 @@ final class WorkshopSession: BuildSession {
     }
 
     private func paintAt(_ ray: (origin: V3, dir: V3)) {
-        guard var pending = pendingPaint else { return }
+        guard var pending = pendingPaint, let h = scene.hitPanel(origin: ray.origin, dir: ray.dir),
+              let i = pending.pieceIndex(h.piece) else { return }
         let c = model.color
-        let panelHit = scene.hitPanel(origin: ray.origin, dir: ray.dir)
-        let sheetHit = scene.hitSheet(origin: ray.origin, dir: ray.dir)
         var changed = false
-        var at: V3?
-        if let h = panelHit, sheetHit.map({ h.distance <= $0.distance }) ?? true {
-            if let i = pending.pieceIndex(h.piece) {
-                for j in pending.pieces[i].panels.indices where model.paintWhole || pending.pieces[i].panels[j].id == h.panel {
-                    if h.top {
-                        if pending.pieces[i].panels[j].top != c { pending.pieces[i].panels[j].top = c; changed = true }
-                    } else if pending.pieces[i].panels[j].under != c {
-                        pending.pieces[i].panels[j].under = c
-                        changed = true
-                    }
-                }
-                at = h.world
-            }
-        } else if let h = sheetHit, let i = pending.sheetIndex(h.sheet) {
+        for j in pending.pieces[i].panels.indices where model.paintWhole || pending.pieces[i].panels[j].id == h.panel {
             if h.top {
-                if pending.sheets[i].top != c { pending.sheets[i].top = c; changed = true }
-            } else if pending.sheets[i].under != c {
-                pending.sheets[i].under = c
+                if pending.pieces[i].panels[j].top != c { pending.pieces[i].panels[j].top = c; changed = true }
+            } else if pending.pieces[i].panels[j].under != c {
+                pending.pieces[i].panels[j].under = c
                 changed = true
             }
-            at = ray.origin + ray.dir * h.distance
         }
         guard changed else { return }
         pendingPaint = pending
         scene.apply(pending)
         engine.sound.play(.glue, volume: 0.5, minInterval: 0.08)
-        if let at { engine.particles.sparks(at: at, count: 4) }
+        engine.particles.sparks(at: h.world, count: 4)
     }
 
     // MARK: Move
@@ -545,33 +612,56 @@ final class WorkshopSession: BuildSession {
             }
             let root = state.groupRoot(hit.piece)
             select(hit.piece)
-            drag = .move(root: root, start: state.piece(root)?.pose.pose ?? .identity, planeY: hit.world.y, from: hit.world,
-                         picked: hit.piece, moved: false)
+            let start = state.piece(root)?.pose.pose ?? .identity
+            let b = scene.groupBounds(root)
+            drag = .move(root: root, start: start, current: start, planeY: hit.world.y, from: hit.world, last: p,
+                         centre: (b.min + b.max) / 2, moved: false)
         case .moved:
-            guard case let .move(root, start, planeY, from, picked, _)? = drag,
-                  let w = rig.orbit.hit(p, planeY: planeY), let node = scene.pieceNodes[root] else { return }
-            let delta = V3(w.x - from.x, 0, w.z - from.z)
-            node.pose = Pose(rot: start.rot, pos: start.pos + delta)
-            drag = .move(root: root, start: start, planeY: planeY, from: from, picked: picked, moved: delta.len > 0.05)
+            guard case let .move(root, start, current, planeY, from, last, centre, _)? = drag,
+                  let node = scene.pieceNodes[root] else { return }
+            let orbit = rig.orbit
+            var pose = current
+            var c = centre
+            switch model.moveMode {
+            case .slide:
+                guard let w = orbit.hit(p, planeY: planeY) else { return }
+                pose = Pose(rot: start.rot, pos: start.pos + V3(w.x - from.x, 0, w.z - from.z))
+            case .lift:
+                let depth = (centre - orbit.eye).dotp(orbit.forward)
+                let dy = -(p.y - last.y) * orbit.unitsPerPoint(atDepth: max(depth, 1))
+                pose.pos.y += dy
+                c.y += dy
+            case .turn:
+                let axis = orbit.up * (p.x - last.x) + orbit.right * (p.y - last.y)
+                let len = axis.len
+                if len > 1e-4 {
+                    let r = Pose(rot: Quat(axis: axis / len, angle: len * 0.011))
+                    pose = Pose.translation(centre) * r * Pose.translation(centre * -1) * current
+                }
+            }
+            node.pose = pose
+            let moved = pose.pos.dist(start.pos) > 0.03 || abs(pose.rot.w - start.rot.w) > 1e-3 ||
+                abs(pose.rot.x - start.rot.x) > 1e-3 || abs(pose.rot.y - start.rot.y) > 1e-3
+            drag = .move(root: root, start: start, current: pose, planeY: planeY, from: from, last: p, centre: c, moved: moved)
         case .ended:
             if case .tap? = drag {
                 drag = nil
                 select(nil)
                 return
             }
-            guard case let .move(root, _, _, _, _, moved)? = drag, let node = scene.pieceNodes[root] else { drag = nil; return }
+            guard case let .move(root, _, current, _, _, _, _, moved)? = drag else { drag = nil; return }
             drag = nil
             guard moved else {
-                status("Selected — turn, tilt, raise, copy or delete it with the buttons below")
+                status("Selected — drag to \(model.moveMode.title.lowercased()) it, or use the buttons below")
                 return
             }
-            let pose = node.pose
             engine.sound.play(.snap, volume: 0.5)
             commit { s in
-                if let i = s.pieceIndex(root) { s.pieces[i].pose = StoredPose(pose) }
+                if let i = s.pieceIndex(root) { s.pieces[i].pose = StoredPose(current) }
             }
+            keepAboveTable(root)
         case .cancelled:
-            if case let .move(root, start, _, _, _, _)? = drag { scene.pieceNodes[root]?.pose = start }
+            if case let .move(root, start, _, _, _, _, _, _)? = drag { scene.pieceNodes[root]?.pose = start }
             drag = nil
         }
     }
@@ -579,7 +669,6 @@ final class WorkshopSession: BuildSession {
     private func select(_ id: String?) {
         selected = id
         model.hasSelection = id != nil
-        model.selectionGlued = id.flatMap { state.piece($0)?.gluedTo } != nil
         refreshSelection()
     }
 
@@ -589,7 +678,7 @@ final class WorkshopSession: BuildSession {
             model.hasSelection = false
         }
         if let g = glueSource {
-            scene.setSelected(g, color: Palette.yellow)
+            scene.setSelected(g, color: PaintColor.glueTint)
         } else {
             scene.setSelected(model.tool == .move ? selected : nil)
         }
@@ -603,14 +692,10 @@ final class WorkshopSession: BuildSession {
         }
         let root = state.groupRoot(sel)
         let right = rig.orbit.right
-        let forward = up3.crossp(right).unit
         switch action {
         case .turn: try await rotateGroup(root, axis: up3, angle: -.pi / 4)
-        case .tilt: try await rotateGroup(root, axis: right, angle: .pi / 4)
-        case .roll: try await rotateGroup(root, axis: forward, angle: .pi / 4)
+        case .stand: try await rotateGroup(root, axis: right, angle: -.pi / 2)
         case .flip: try await rotateGroup(root, axis: right, angle: .pi)
-        case .raise: try await shiftGroup(root, by: V3(0, 0.5, 0))
-        case .lower: try await shiftGroup(root, by: V3(0, -0.5, 0))
         case .drop:
             let b = scene.groupBounds(root)
             try await shiftGroup(root, by: V3(0, -b.min.y, 0))
@@ -660,7 +745,7 @@ final class WorkshopSession: BuildSession {
         commit { s in
             if let i = s.pieceIndex(root) { s.pieces[i].pose = StoredPose(end) }
         }
-        keepAboveMat(root)
+        keepAboveTable(root)
     }
 
     private func shiftGroup(_ root: String, by d: V3) async throws {
@@ -670,13 +755,13 @@ final class WorkshopSession: BuildSession {
         commit { s in
             if let i = s.pieceIndex(root) { s.pieces[i].pose = StoredPose(end) }
         }
-        keepAboveMat(root)
+        keepAboveTable(root)
     }
 
     /// Nothing sinks into the table.
-    private func keepAboveMat(_ root: String) {
+    private func keepAboveTable(_ root: String) {
         let low = scene.groupBounds(root).min.y
-        guard low < -1e-3 else { return }
+        guard low < -1e-3, state.piece(root)?.gluedTo == nil else { return }
         amend { s in
             if let i = s.pieceIndex(root) {
                 var p = s.pieces[i].pose.pose
@@ -692,8 +777,10 @@ final class WorkshopSession: BuildSession {
         switch phase {
         case .began:
             drag = .tap(at: p)
-        case .moved, .cancelled:
-            if phase == .cancelled { drag = nil }
+        case .moved:
+            break
+        case .cancelled:
+            drag = nil
         case .ended:
             guard case let .tap(at)? = drag, isTap(at, p) else { drag = nil; return }
             drag = nil
@@ -779,7 +866,8 @@ final class WorkshopSession: BuildSession {
         case .clearAll:
             clearGesture()
             select(nil)
-            commit { $0 = WorkshopSession.freshBench() }
+            let fresh = freshBench()
+            commit { $0 = fresh }
             frameBench(duration: 0.9)
             status("Fresh workbench — Undo brings everything back")
         case .resetView:
@@ -789,11 +877,16 @@ final class WorkshopSession: BuildSession {
             frameBench(duration: 0.8)
         case .closeShape:
             closeLines()
+        case .cutAlong:
+            cutAlongLines()
         case .undoPoint:
             if !linePoints.isEmpty { linePoints.removeLast() }
             model.linePoints = linePoints.count
-            if linePoints.isEmpty { lineSheet = nil }
+            if linePoints.isEmpty { target = nil }
             updateLinesPreview(nil)
+        case .cancelDrawing:
+            clearGesture()
+            status(model.tool.help)
         case .move(let action):
             try await performMove(action)
         }
@@ -801,31 +894,36 @@ final class WorkshopSession: BuildSession {
 
     private func newSheet() async throws {
         clearGesture()
-        let spot = Workshop.freeSheetSpot(state, pieceBounds: scene.pieceFootprints())
+        model.showSheetPicker = false
+        let size = Workshop.sheetSizes[min(max(model.sheetSize, 0), Workshop.sheetSizes.count - 1)].size
+        let spot = Workshop.freeSpot(size: size, occupied: scene.pieceFootprints())
         var id = ""
-        commit { s in
-            id = s.makeID("sheet")
-            s.sheets.append(FreeSheet(id: id, size: Workshop.sheetSize, center: spot))
-            s.activeSheet = id
-        }
+        let stockID = model.sheetStock.isEmpty ? stock.id : model.sheetStock
+        commit { s in id = Workshop.addSheet(size: size, stock: stockID, at: spot, in: &s) }
         frameBench(duration: 0.9)
-        guard let node = scene.sheetNodes[id] else { return }
+        guard let node = scene.pieceNodes[id] else { return }
         engine.sound.play(.whoosh)
+        let end = node.pose
         try await tw.tween(0.55, ease: .outBack) { k in
-            node.setPosition(spot + V3(0, 3 * (1 - k), 0))
-            node.opacity = CGFloat(min(1, k * 2))
+            node.pose = Pose(rot: end.rot, pos: end.pos + V3(0, 3 * (1 - k), 0))
         }
-        node.setPosition(spot)
-        node.opacity = 1
+        node.pose = end
         rig.addShake(0.1)
         status("Fresh sheet — draw your next shape")
     }
 
-    /// Frames the active sheet (or the last one) in the workshop view.
+    /// Frames the newest sheet (or everything) in the workshop view.
     private func frameBench(duration: Double) {
-        let sheet = state.activeSheet.flatMap { state.sheet($0) } ?? state.sheets.last
-        let center = sheet?.center ?? V3(0, 0, 0)
-        let size = (sheet?.size ?? Workshop.sheetSize) + V2(5, 4)
+        let focus = state.activeSheet.flatMap { state.piece($0) != nil ? $0 : nil } ?? state.pieces.last?.id
+        var center = V3(0, 0, 0)
+        var size = Workshop.sheetSize + V2(5, 4)
+        if let focus {
+            let b = scene.groupBounds(state.groupRoot(focus))
+            if b.min.x < b.max.x {
+                center = (b.min + b.max) / 2
+                size = V2(b.max.x - b.min.x, b.max.z - b.min.z) + V2(5, 4)
+            }
+        }
         let insets = CameraRig.Insets(top: 0.16, bottom: 0.17, left: 0.12, right: model.tool == .paint ? 0.3 : 0.04)
         rig.glide(to: rig.framing(center: center, size: size, view: model.topView ? .topDown : .workshop, insets: insets),
                   duration: duration, tweener: tw)
@@ -837,18 +935,20 @@ final class WorkshopSession: BuildSession {
         preview.childNodes.forEach { $0.removeFromParentNode() }
     }
 
-    /// Red line showing the shape being drawn on a sheet.
-    private func showShapePreview(_ shape: [V2], sheet: String, closed: Bool, startMarker: V2? = nil) {
+    /// Red line showing a cut being drawn on a panel face.
+    private func showPreview(_ flat: [V2], on t: Target, closed: Bool, startMarker: V2? = nil) {
         clearPreview()
-        guard let s = state.sheet(sheet), shape.count >= 2 else { return }
-        let y = s.center.y + t + 0.012
-        var pts = shape.map { (s.center.xz + $0).onMat(y) }
+        guard flat.count >= 2 else { return }
+        let pose = scene.panelWorld(t.piece, t.panel)
+        let lift: Float = t.faceY > 0 ? t.faceY + 0.012 : -0.012
+        let normal = pose.applyVector(V3(0, t.faceY > 0 ? 1 : -1, 0))
+        var pts = flat.map { pose.apply($0.onMat(lift)) }
         if closed, let f = pts.first { pts.append(f) }
         var m = MeshData()
-        MeshBuilder.ribbon(pts, width: 0.09, into: &m)
+        MeshBuilder.ribbon(pts, width: 0.09, normal: normal, into: &m)
         if let a = startMarker {
-            let ring = Poly.circle(center: a, radius: 0.28, sides: 12).map { (s.center.xz + $0).onMat(y) }
-            MeshBuilder.ribbon(ring + [ring[0]], width: 0.06, into: &m)
+            let ring = Poly.circle(center: a, radius: 0.28, sides: 12).map { pose.apply($0.onMat(lift)) }
+            MeshBuilder.ribbon(ring + [ring[0]], width: 0.06, normal: normal, into: &m)
         }
         let node = SceneBridge.node(m, [Mat.unlit(Palette.red)], name: "shapePreview")
         node.castsShadow = false
@@ -856,21 +956,27 @@ final class WorkshopSession: BuildSession {
         preview.addChildNode(node)
     }
 
-    /// Blue dashed line where the crease will go (red if it can't split the panel).
-    private func showCreasePreview(_ piece: String, _ panel: String, _ a: V2, _ b: V2, faceY: Float) {
+    /// Where the crease will go (snapped, across the whole panel): blue dashes for a
+    /// valley, dash-dot for a mountain, red if it can't split the panel.
+    private func showCreasePreview(_ t: Target, _ a: V2, _ b: V2) {
         clearPreview()
-        guard let p = state.piece(piece)?.panel(panel) else { return }
-        let pose = scene.panelWorld(piece, panel)
-        let lift: Float = faceY > 0 ? faceY + 0.015 : -0.015
+        guard let panel = state.piece(t.piece)?.panel(t.panel) else { return }
+        let pose = scene.panelWorld(t.piece, t.panel)
+        let lift: Float = t.faceY > 0 ? t.faceY + 0.015 : -0.015
+        let normal = pose.applyVector(V3(0, t.faceY > 0 ? 1 : -1, 0))
+        let (sa, sb) = a.dist(b) > 0.3 ? Workshop.snapCrease(a, b, outline: panel.outline) : (a, b)
         var m = MeshData()
         let ok: Bool
-        if let split = Poly.splitByLine(p.outline, a, b) {
-            MeshBuilder.dashes(pose.apply(split.p.onMat(lift)), pose.apply(split.q.onMat(lift)), width: 0.08,
-                               normal: pose.applyVector(V3(0, faceY > 0 ? 1 : -1, 0)), into: &m)
+        if let split = Poly.splitByLine(panel.outline, sa, sb) {
+            let p = pose.apply(split.p.onMat(lift)), q = pose.apply(split.q.onMat(lift))
+            if model.creaseKind == .mountain {
+                MeshBuilder.dashDot(p, q, width: 0.08, normal: normal, into: &m)
+            } else {
+                MeshBuilder.dashes(p, q, width: 0.08, normal: normal, into: &m)
+            }
             ok = true
         } else {
-            MeshBuilder.ribbon([pose.apply(a.onMat(lift)), pose.apply(b.onMat(lift))], width: 0.06,
-                               normal: pose.applyVector(V3(0, faceY > 0 ? 1 : -1, 0)), into: &m)
+            MeshBuilder.ribbon([pose.apply(sa.onMat(lift)), pose.apply(sb.onMat(lift))], width: 0.06, normal: normal, into: &m)
             ok = false
         }
         let node = SceneBridge.node(m, [Mat.unlit(ok ? Palette.blue : Palette.red)], name: "creasePreview")

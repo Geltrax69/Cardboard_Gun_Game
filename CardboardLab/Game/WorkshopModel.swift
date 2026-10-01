@@ -3,14 +3,18 @@ import Foundation
 
 /// Things the workshop UI asks the session to do.
 enum WorkshopCommand: Equatable {
+    /// Adds a sheet with the size and cardboard picked in the sheet picker.
     case newSheet
     case undo
     case clearAll
     case resetView
     case toggleView
-    /// Lines mode: close the shape drawn so far / remove the last point.
+    /// Straight-lines mode: close the shape / cut along the open line / drop the last
+    /// point / start over.
     case closeShape
+    case cutAlong
     case undoPoint
+    case cancelDrawing
     case move(WorkshopModel.MoveAction)
 }
 
@@ -48,11 +52,11 @@ final class WorkshopModel: ObservableObject {
         /// What to do with this tool, shown under the title.
         var help: String {
             switch self {
-            case .cut: return "Draw a closed shape on a sheet, then cut along the red line."
-            case .crease: return "Drag a line across a piece to add a blue fold line."
-            case .fold: return "Grab a flap next to a fold line and drag it up or down."
-            case .paint: return "Pick a colour, then tap or brush over faces and sheets."
-            case .move: return "Drag a piece to move it. Tap one to turn, tilt, copy or delete it."
+            case .cut: return "Draw on any piece or sheet: a closed shape punches it out, a line across slices it."
+            case .crease: return "Drag a line across a piece — start off the edge if you like. It snaps straight."
+            case .fold: return "Grab a flap next to a fold line and drag: valley lines fold up, mountain lines fold down."
+            case .paint: return "Pick a colour, then tap or brush over any face."
+            case .move: return "Drag any piece or sheet. Pick Slide, Lift or Turn below; tap a piece for more."
             case .glue: return "Tap a piece, then tap the piece to stick it onto."
             case .view: return "Drag to slide around the table · two fingers to turn · pinch to zoom."
             }
@@ -60,12 +64,13 @@ final class WorkshopModel: ObservableObject {
     }
 
     enum Shape: String, CaseIterable {
-        case freehand, lines, rectangle, circle
+        case freehand, straight, lines, rectangle, circle
 
         var title: String {
             switch self {
             case .freehand: return "Freehand"
-            case .lines: return "Straight lines"
+            case .straight: return "Straight cut"
+            case .lines: return "Lines"
             case .rectangle: return "Rectangle"
             case .circle: return "Circle"
             }
@@ -74,6 +79,7 @@ final class WorkshopModel: ObservableObject {
         var symbol: String {
             switch self {
             case .freehand: return "scribble"
+            case .straight: return "line.diagonal"
             case .lines: return "triangle"
             case .rectangle: return "rectangle"
             case .circle: return "circle"
@@ -81,18 +87,36 @@ final class WorkshopModel: ObservableObject {
         }
     }
 
-    enum MoveAction: String, CaseIterable {
-        case turn, tilt, roll, raise, lower, flip, drop, copy, unglue, delete
+    /// How a drag moves the picked piece.
+    enum MoveMode: String, CaseIterable {
+        case slide, lift, turn
 
         var title: String {
             switch self {
+            case .slide: return "Slide"
+            case .lift: return "Lift"
             case .turn: return "Turn"
-            case .tilt: return "Tilt"
-            case .roll: return "Roll"
-            case .raise: return "Up"
-            case .lower: return "Down"
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .slide: return "arrow.up.and.down.and.arrow.left.and.right"
+            case .lift: return "arrow.up.and.down"
+            case .turn: return "rotate.3d"
+            }
+        }
+    }
+
+    enum MoveAction: String, CaseIterable {
+        case turn, stand, flip, drop, copy, unglue, delete
+
+        var title: String {
+            switch self {
+            case .turn: return "Turn 45°"
+            case .stand: return "Stand up"
             case .flip: return "Flip"
-            case .drop: return "To mat"
+            case .drop: return "To table"
             case .copy: return "Copy"
             case .unglue: return "Unglue"
             case .delete: return "Delete"
@@ -102,10 +126,7 @@ final class WorkshopModel: ObservableObject {
         var symbol: String {
             switch self {
             case .turn: return "arrow.clockwise"
-            case .tilt: return "rotate.3d"
-            case .roll: return "arrow.triangle.2.circlepath"
-            case .raise: return "arrow.up"
-            case .lower: return "arrow.down"
+            case .stand: return "rectangle.portrait.rotate"
             case .flip: return "arrow.up.arrow.down"
             case .drop: return "arrow.down.to.line"
             case .copy: return "plus.square.on.square"
@@ -123,8 +144,16 @@ final class WorkshopModel: ObservableObject {
     }
     /// The knife cuts the shape by itself instead of the player tracing it.
     @Published var quickCut = false
+    /// Valley (folds up) or mountain (folds down) for new fold lines.
+    @Published var creaseKind: FoldKind = .valley
+    @Published var moveMode: MoveMode = .slide
     /// Paint every panel of a piece at once.
     @Published var paintWhole = false
+
+    // New sheets.
+    @Published var showSheetPicker = false
+    @Published var sheetSize = 0
+    @Published var sheetStock = CardboardStock.plain.id
 
     // Colour (HSB, 0…1).
     @Published var hue: Float = 0.02
@@ -134,6 +163,9 @@ final class WorkshopModel: ObservableObject {
 
     @Published var status = ""
     @Published var busy = false
+    /// A cut is being traced (shows Cancel).
+    @Published var cutting = false
+    var cancelRequested = false
     @Published var hasSelection = false
     @Published var selectionGlued = false
     @Published var canUndo = false
@@ -160,6 +192,10 @@ final class WorkshopModel: ObservableObject {
         recent.removeAll { $0 == c }
         recent.insert(c, at: 0)
         if recent.count > 8 { recent.removeLast(recent.count - 8) }
+    }
+
+    func cancelCut() {
+        cancelRequested = true
     }
 
     /// Ready-made shades: the game palette, cardboard tones, greys.

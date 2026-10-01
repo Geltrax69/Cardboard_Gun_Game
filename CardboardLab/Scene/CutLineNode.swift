@@ -12,6 +12,8 @@ final class CutLineNode {
     private let glow = SCNNode()
     private var glowSegment = -1
     private(set) var progress: Float = 0
+    /// Normal of the surface the line lies on (up for the mat).
+    let normal: V3
     static let width: Float = 0.085
 
     private static let redMat = Mat.unlit(Palette.red)
@@ -20,8 +22,9 @@ final class CutLineNode {
     private static let glowMat = Mat.unlit(Palette.red, opacity: 0.32, depthWrite: false)
 
     /// `points` are world positions on the sheet surface (closed loops repeat the start).
-    init(points: [V3], name: String) {
+    init(points: [V3], name: String, normal: V3 = V3(0, 1, 0)) {
         path = Polyline(points)
+        self.normal = normal
         root.name = "cut-\(name)"
         for n in [glow, base, done] {
             n.castsShadow = false
@@ -37,17 +40,17 @@ final class CutLineNode {
     func drawIn(_ k: Float) {
         var m = MeshData()
         let pts = path.slice(0, path.length * saturate(k))
-        if pts.count > 1 { MeshBuilder.ribbon(pts, width: CutLineNode.width, into: &m) }
+        if pts.count > 1 { MeshBuilder.ribbon(pts, width: CutLineNode.width, normal: normal, into: &m) }
         base.geometry = m.isEmpty ? nil : SceneBridge.geometry(m, materials: [CutLineNode.redMat])
     }
 
     func setProgress(_ d: Float) {
         progress = clampf(d, 0, path.length)
         guard progress > 1e-3 else { done.geometry = nil; return }
-        let pts = path.slice(0, progress).map { $0 + V3(0, 0.002, 0) }
+        let pts = path.slice(0, progress).map { $0 + normal * 0.002 }
         var m = MeshData(parts: 2)
-        MeshBuilder.ribbon(pts, width: CutLineNode.width + 0.01, part: 0, into: &m)
-        MeshBuilder.ribbon(pts.map { $0 + V3(0, 0.002, 0) }, width: 0.035, part: 1, into: &m)
+        MeshBuilder.ribbon(pts, width: CutLineNode.width + 0.01, normal: normal, part: 0, into: &m)
+        MeshBuilder.ribbon(pts.map { $0 + normal * 0.002 }, width: 0.035, normal: normal, part: 1, into: &m)
         done.geometry = SceneBridge.geometry(m, materials: [CutLineNode.mutedMat, CutLineNode.kerfMat])
     }
 
@@ -60,7 +63,7 @@ final class CutLineNode {
             glowSegment = seg
             var m = MeshData()
             let a = path.cumulative[seg], b = path.cumulative[min(seg + 1, path.points.count - 1)]
-            MeshBuilder.ribbon(path.slice(a, b).map { $0 + V3(0, -0.001, 0) }, width: 0.3, into: &m)
+            MeshBuilder.ribbon(path.slice(a, b).map { $0 - normal * 0.001 }, width: 0.3, normal: normal, into: &m)
             glow.geometry = SceneBridge.geometry(m, materials: [CutLineNode.glowMat])
         }
         glow.opacity = CGFloat(0.6 + 0.4 * sin(time * 6))

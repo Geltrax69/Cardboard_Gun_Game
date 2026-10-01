@@ -71,34 +71,49 @@ public struct StoredPose: Codable, Equatable {
     }
 }
 
+extension FoldKind: Codable {}
+
 /// One flat panel of a free piece. Panels are joined by creases into a tree.
 public struct FreePanel: Codable, Equatable {
     public var id: String
     /// Outline in the piece's flat frame (counter-clockwise).
     public var outline: [V2]
+    /// Holes cut out of the panel (optional on disk so older saves still load).
+    public var cutouts: [[V2]]?
     public var parent: String?
     /// Crease to the parent panel.
     public var hingeA: V2?
     public var hingeB: V2?
+    /// Valley creases fold toward the top face, mountain creases away from it.
+    public var fold: FoldKind?
     /// Fold angle relative to the parent (radians, + folds toward the top face).
     public var angle: Float = 0
     public var top: PaintColor?
     public var under: PaintColor?
 
-    public init(id: String, outline: [V2], parent: String? = nil, hingeA: V2? = nil, hingeB: V2? = nil,
-                angle: Float = 0, top: PaintColor? = nil, under: PaintColor? = nil) {
+    public init(id: String, outline: [V2], holes: [[V2]] = [], parent: String? = nil, hingeA: V2? = nil, hingeB: V2? = nil,
+                fold: FoldKind? = nil, angle: Float = 0, top: PaintColor? = nil, under: PaintColor? = nil) {
         self.id = id
         self.outline = Poly.signedArea(outline) < 0 ? outline.reversed() : outline
+        self.cutouts = holes.isEmpty ? nil : holes
         self.parent = parent
         self.hingeA = hingeA
         self.hingeB = hingeB
+        self.fold = fold
         self.angle = angle
         self.top = top
         self.under = under
     }
+
+    public var holes: [[V2]] {
+        get { cutouts ?? [] }
+        set { cutouts = newValue.isEmpty ? nil : newValue }
+    }
+
+    public var foldKind: FoldKind { fold ?? .valley }
 }
 
-/// A piece cut out in the workshop.
+/// A piece of cardboard on the table: a fresh sheet or anything cut from one.
 public struct FreePiece: Codable, Equatable {
     public var id: String
     public var panels: [FreePanel]
@@ -106,25 +121,34 @@ public struct FreePiece: Codable, Equatable {
     public var pose: StoredPose
     public var gluedTo: String?
     public var nextPanel = 1
+    /// Cardboard stock id (texture, colours, thickness).
+    public var stock: String?
+    /// True for sheets taken from the pile (they're just big pieces).
+    public var sheet: Bool?
 
-    public init(id: String, panels: [FreePanel], pose: Pose, gluedTo: String? = nil) {
+    public init(id: String, panels: [FreePanel], pose: Pose, gluedTo: String? = nil, stock: String? = nil, sheet: Bool = false) {
         self.id = id
         self.panels = panels
         self.pose = StoredPose(pose)
         self.gluedTo = gluedTo
+        self.stock = stock
+        self.sheet = sheet ? true : nil
     }
 
     public func panel(_ id: String) -> FreePanel? { panels.first { $0.id == id } }
     public func panelIndex(_ id: String) -> Int? { panels.firstIndex { $0.id == id } }
 
+    public var thickness: Float { CardboardStock.byID(stock ?? CardboardStock.plain.id).thickness }
+    public var isSheet: Bool { sheet ?? false }
+
     /// Template form, for folding and meshing with the same code as the campaign.
     public var pieceDef: PieceDef {
         let defs = panels.map { p -> PanelDef in
             var hinge: HingeDef? = nil
-            if let a = p.hingeA, let b = p.hingeB { hinge = HingeDef(a, b, .valley, degrees: 90) }
-            return PanelDef(p.id, p.outline, parent: p.parent, hinge: hinge)
+            if let a = p.hingeA, let b = p.hingeB { hinge = HingeDef(a, b, p.foldKind, degrees: 90) }
+            return PanelDef(p.id, p.outline, holes: p.holes, parent: p.parent, hinge: hinge)
         }
-        return PieceDef(id: id, name: "Piece", placement: V2(0, 0), panels: defs)
+        return PieceDef(id: id, name: isSheet ? "Sheet" : "Piece", placement: V2(0, 0), panels: defs)
     }
 
     public var angles: [String: Float] {
@@ -132,34 +156,46 @@ public struct FreePiece: Codable, Equatable {
         for p in panels where p.parent != nil { a[p.id] = p.angle }
         return a
     }
+
+    /// Folded pose of each panel in the piece frame.
+    public func rig() -> FoldRig {
+        var r = FoldRig(piece: pieceDef, thickness: thickness)
+        r.angles = angles
+        return r
+    }
+
+    /// The panel and every panel hanging off it.
+    public func subtree(_ id: String) -> Set<String> {
+        var out: Set<String> = [id]
+        var grew = true
+        while grew {
+            grew = false
+            for p in panels where !out.contains(p.id) {
+                if let parent = p.parent, out.contains(parent) {
+                    out.insert(p.id)
+                    grew = true
+                }
+            }
+        }
+        return out
+    }
 }
 
-/// A sheet of cardboard on the table. Cut shapes leave holes in it.
+/// A sheet from an older save (sheets are pieces now).
 public struct FreeSheet: Codable, Equatable {
     public var id: String
     public var size: V2
-    /// Centre of the sheet on the table.
     public var center: V3
-    /// Holes left by cut pieces, in sheet coordinates (centred on the sheet).
     public var holes: [[V2]] = []
     public var top: PaintColor?
     public var under: PaintColor?
-
-    public init(id: String, size: V2, center: V3) {
-        self.id = id
-        self.size = size
-        self.center = center
-    }
-
-    public var outline: [V2] {
-        let h = size / 2
-        return Poly.rect(-h.x, -h.y, h.x, h.y)
-    }
 }
 
 public struct WorkshopState: Codable, Equatable {
+    /// Only read from older saves; see `migrate`.
     public var sheets: [FreeSheet] = []
     public var pieces: [FreePiece] = []
+    /// The piece the camera frames by default (usually the newest sheet).
     public var activeSheet: String?
     public var counter = 0
 
@@ -170,10 +206,19 @@ public struct WorkshopState: Codable, Equatable {
         return "\(prefix)\(counter)"
     }
 
-    public func sheet(_ id: String) -> FreeSheet? { sheets.first { $0.id == id } }
     public func piece(_ id: String) -> FreePiece? { pieces.first { $0.id == id } }
     public func pieceIndex(_ id: String) -> Int? { pieces.firstIndex { $0.id == id } }
-    public func sheetIndex(_ id: String) -> Int? { sheets.firstIndex { $0.id == id } }
+
+    /// Turns sheets from older saves into pieces, and gives pieces without a stock one.
+    public mutating func migrate(defaultStock: String) {
+        for s in sheets {
+            let panel = FreePanel(id: "P0", outline: Poly.rect(-s.size.x / 2, -s.size.y / 2, s.size.x / 2, s.size.y / 2),
+                                  holes: s.holes, top: s.top, under: s.under)
+            pieces.insert(FreePiece(id: s.id, panels: [panel], pose: .translation(s.center), stock: defaultStock, sheet: true), at: 0)
+        }
+        sheets = []
+        for i in pieces.indices where pieces[i].stock == nil { pieces[i].stock = defaultStock }
+    }
 
     /// World pose of a piece's flat frame (following glue links).
     public func worldPose(_ id: String) -> Pose {
@@ -186,6 +231,12 @@ public struct WorkshopState: Codable, Equatable {
             guardCount += 1
         }
         return pose
+    }
+
+    /// World pose of one panel as folded.
+    public func panelWorld(_ pieceID: String, _ panelID: String) -> Pose {
+        guard let p = piece(pieceID) else { return .identity }
+        return worldPose(pieceID) * p.rig().pose(of: panelID)
     }
 
     /// The piece at the top of a glue chain (moving it moves the whole group).
@@ -203,13 +254,15 @@ public struct WorkshopState: Codable, Equatable {
 // MARK: - Editing
 
 public enum Workshop {
+    /// Sheet sizes on offer (long ones fit swords).
+    public static let sheetSizes: [(name: String, size: V2)] = [
+        ("Small", V2(14, 10)), ("Large", V2(20, 14)), ("Long", V2(28, 10)), ("Huge", V2(28, 20)),
+    ]
     public static let sheetSize = V2(14, 10)
-    /// Free space kept between holes and around the sheet edge.
-    public static let margin: Float = 0.15
-    public static let minArea: Float = 0.35
+    public static let minArea: Float = 0.3
 
-    public enum CutProblem: Equatable {
-        case tooSmall, crossesItself, offSheet, overlapsHole
+    public enum CutProblem: Error, Equatable {
+        case tooSmall, crossesItself, missesPiece, crossesHole, crossesFold, needsEdge, tooManyCrossings
     }
 
     /// Turns a hand-drawn loop into a clean low-poly shape (closed, counter-clockwise).
@@ -222,45 +275,241 @@ public enum Workshop {
         return Poly.signedArea(simple) < 0 ? simple.reversed() : simple
     }
 
-    /// Checks a shape (sheet coordinates) can be cut from the sheet.
-    public static func checkCut(_ shape: [V2], in sheet: FreeSheet) -> CutProblem? {
-        guard shape.count >= 3, abs(Poly.signedArea(shape)) >= minArea else { return .tooSmall }
-        guard Poly.isSimple(shape) else { return .crossesItself }
-        let h = sheet.size / 2 - V2(margin, margin)
-        guard shape.allSatisfy({ abs($0.x) <= h.x && abs($0.y) <= h.y }) else { return .offSheet }
-        for hole in sheet.holes where Poly.overlaps(shape, hole, gap: margin) { return .overlapsHole }
-        return nil
+    /// Cleans an open stroke (a slicing cut).
+    public static func cleanPath(_ raw: [V2], tolerance: Float = 0.1) -> [V2] {
+        var pts: [V2] = []
+        for p in raw where pts.last.map({ $0.dist(p) > 0.04 }) ?? true { pts.append(p) }
+        return pts.count > 2 ? Poly.simplifyOpen(pts, tolerance) : pts
     }
 
-    /// Cuts `shape` (sheet coordinates) out of a sheet: the sheet gets a hole and a new
-    /// piece lies exactly where it was cut, coloured like the sheet.
-    public static func cut(_ shape: [V2], from sheetID: String, in state: inout WorkshopState) -> String? {
-        guard let si = state.sheetIndex(sheetID), checkCut(shape, in: state.sheets[si]) == nil else { return nil }
-        let sheet = state.sheets[si]
-        let ccw = Poly.signedArea(shape) < 0 ? shape.reversed() : shape
-        let c = Poly.centroid(ccw)
-        let id = state.makeID("piece")
-        let panel = FreePanel(id: "P0", outline: ccw.map { $0 - c }, top: sheet.top, under: sheet.under)
-        let pose = Pose.translation(sheet.center + c.onMat(0))
-        state.pieces.append(FreePiece(id: id, panels: [panel], pose: pose))
-        state.sheets[si].holes.append(ccw)
+    /// Adds a fresh sheet to the table.
+    @discardableResult
+    public static func addSheet(size: V2, stock: String, at center: V3, in state: inout WorkshopState) -> String {
+        let id = state.makeID("sheet")
+        let panel = FreePanel(id: "P0", outline: Poly.rect(-size.x / 2, -size.y / 2, size.x / 2, size.y / 2))
+        state.pieces.append(FreePiece(id: id, panels: [panel], pose: .translation(center), stock: stock, sheet: true))
+        state.activeSheet = id
         return id
     }
 
+    // MARK: Cutting
+
+    /// Cuts along a closed loop drawn on a panel (flat piece coordinates). Inside the
+    /// panel it punches the shape out as a new piece; crossing the edge it bites that
+    /// part off. Returns the new piece.
+    public static func cutLoop(_ raw: [V2], piece pieceID: String, panel panelID: String,
+                               in state: inout WorkshopState) -> Result<String, CutProblem> {
+        let loop = Poly.signedArea(raw) < 0 ? Array(raw.reversed()) : raw
+        guard loop.count >= 3, abs(Poly.signedArea(loop)) >= minArea else { return .failure(.tooSmall) }
+        guard Poly.isSimple(loop) else { return .failure(.crossesItself) }
+        guard let pi = state.pieceIndex(pieceID), let panel = state.pieces[pi].panel(panelID) else { return .failure(.missesPiece) }
+        let crossings = Poly.pathCrossings(loop, closed: true, outline: panel.outline)
+        if crossings.isEmpty {
+            guard loop.allSatisfy({ Poly.contains(panel.outline, $0) }) else {
+                return .failure(Poly.contains(loop, panel.outline[0]) ? .tooManyCrossings : .missesPiece)
+            }
+            guard loop.allSatisfy({ minDistance($0, panel.outline) > 0.06 }) else { return .failure(.needsEdge) }
+            for hole in panel.holes where Poly.overlaps(loop, hole, gap: 0.06) { return .failure(.crossesHole) }
+            // Punch out: a hole in the panel and a new piece lying exactly where it was.
+            let piece = state.pieces[pi]
+            let c = Poly.centroid(loop)
+            let world = state.panelWorld(pieceID, panelID)
+            let id = state.makeID("piece")
+            let cut = FreePanel(id: "P0", outline: loop.map { $0 - c }, top: panel.top, under: panel.under)
+            state.pieces.append(FreePiece(id: id, panels: [cut], pose: world * .translation(c.onMat(0)), stock: piece.stock))
+            if let j = state.pieces[pi].panelIndex(panelID) { state.pieces[pi].panels[j].holes.append(loop) }
+            return .success(id)
+        }
+        guard crossings.count == 2 else { return .failure(.tooManyCrossings) }
+        // The arc of the loop inside the panel is the cut.
+        let a = crossings[0], b = crossings[1]
+        let inner = Poly.subPath(loop, closed: true, from: a, to: b)
+        let other = Poly.subPath(loop, closed: true, from: b, to: a)
+        let path = Poly.contains(panel.outline, Poly.pathMidpoint(inner)) ? inner : other
+        let (from, to) = path == inner ? (a, b) : (b, a)
+        return split(pieceID, panelID, along: path, entry: (from.edge, from.t), exit: (to.edge, to.t), in: &state)
+    }
+
+    /// Cuts along an open line drawn across a panel, splitting the piece in two. The
+    /// line's ends are stretched a little so a stroke that stops just short of an edge
+    /// still reaches it. Returns the new piece.
+    public static func slice(_ raw: [V2], piece pieceID: String, panel panelID: String,
+                             in state: inout WorkshopState) -> Result<String, CutProblem> {
+        guard raw.count >= 2, let panel = state.piece(pieceID)?.panel(panelID) else { return .failure(.missesPiece) }
+        var path = raw
+        let n = path.count
+        let d0 = (path[0] - path[1]).unit, d1 = (path[n - 1] - path[n - 2]).unit
+        path[0] = path[0] + d0 * 0.6
+        path[n - 1] = path[n - 1] + d1 * 0.6
+        let crossings = Poly.pathCrossings(path, closed: false, outline: panel.outline)
+        guard crossings.count >= 2 else {
+            return .failure(path.allSatisfy { Poly.contains(panel.outline, $0) } ? .needsEdge : .missesPiece)
+        }
+        for k in 0..<(crossings.count - 1) {
+            let a = crossings[k], b = crossings[k + 1]
+            let inner = Poly.subPath(path, closed: false, from: a, to: b)
+            if Poly.contains(panel.outline, Poly.pathMidpoint(inner)) {
+                guard Poly.isSimpleOpen(inner) else { return .failure(.crossesItself) }
+                return split(pieceID, panelID, along: inner, entry: (a.edge, a.t), exit: (b.edge, b.t), in: &state)
+            }
+        }
+        return .failure(.missesPiece)
+    }
+
+    /// The exact line the knife will run along for a cut on a panel: the loop itself
+    /// when it's inside, otherwise the part of the loop or slice inside the panel.
+    public static func knifePath(loop: [V2]?, slice: [V2]?, outline: [V2]) -> (points: [V2], closed: Bool)? {
+        if let raw = loop, raw.count >= 3 {
+            let loop = Poly.signedArea(raw) < 0 ? Array(raw.reversed()) : raw
+            let c = Poly.pathCrossings(loop, closed: true, outline: outline)
+            if c.isEmpty { return (loop, true) }
+            guard c.count == 2 else { return nil }
+            let inner = Poly.subPath(loop, closed: true, from: c[0], to: c[1])
+            return (Poly.contains(outline, Poly.pathMidpoint(inner)) ? inner : Poly.subPath(loop, closed: true, from: c[1], to: c[0]), false)
+        }
+        if let raw = slice, raw.count >= 2 {
+            var path = raw
+            let n = path.count
+            path[0] = path[0] + (path[0] - path[1]).unit * 0.6
+            path[n - 1] = path[n - 1] + (path[n - 1] - path[n - 2]).unit * 0.6
+            let c = Poly.pathCrossings(path, closed: false, outline: outline)
+            guard c.count >= 2 else { return nil }
+            for k in 0..<(c.count - 1) {
+                let inner = Poly.subPath(path, closed: false, from: c[k], to: c[k + 1])
+                if Poly.contains(outline, Poly.pathMidpoint(inner)) { return (inner, false) }
+            }
+        }
+        return nil
+    }
+
+    /// Splits one panel along a path running edge to edge. The side holding the panel's
+    /// own crease (or, for the base, more creases, else more area) stays; the other side
+    /// and everything folded off it becomes a new piece.
+    static func split(_ pieceID: String, _ panelID: String, along path: [V2], entry: (Int, Float), exit: (Int, Float),
+                      in state: inout WorkshopState) -> Result<String, CutProblem> {
+        guard let pi = state.pieceIndex(pieceID), let panel = state.pieces[pi].panel(panelID) else { return .failure(.missesPiece) }
+        let piece = state.pieces[pi]
+        guard let (sideA, sideB) = Poly.splitByPath(panel.outline, path, entry: entry, exit: exit) else { return .failure(.crossesItself) }
+        guard abs(Poly.signedArea(sideA)) > 0.05, abs(Poly.signedArea(sideB)) > 0.05 else { return .failure(.tooSmall) }
+        guard Poly.isSimple(sideA), Poly.isSimple(sideB) else { return .failure(.crossesItself) }
+        // Holes go with the side they're in; the cut can't run through one.
+        var holesA: [[V2]] = [], holesB: [[V2]] = []
+        for hole in panel.holes {
+            for i in 0..<(path.count - 1) {
+                for j in 0..<hole.count where Poly.segmentsCross(path[i], path[i + 1], hole[j], hole[(j + 1) % hole.count]) {
+                    return .failure(.crossesHole)
+                }
+            }
+            if Poly.contains(sideA, Poly.centroid(hole)) { holesA.append(hole) } else { holesB.append(hole) }
+        }
+        func holds(_ poly: [V2], _ ha: V2, _ hb: V2) -> Bool {
+            Poly.onBoundary(poly, ha) && Poly.onBoundary(poly, hb) && Poly.onBoundary(poly, (ha + hb) / 2)
+        }
+        var keepA: Bool
+        if let ha = panel.hingeA, let hb = panel.hingeB {
+            let a = holds(sideA, ha, hb), b = holds(sideB, ha, hb)
+            guard a != b else { return .failure(.crossesFold) }
+            keepA = a
+        } else {
+            let kids = piece.panels.filter { $0.parent == panelID }.compactMap { k -> (V2, V2)? in
+                guard let ha = k.hingeA, let hb = k.hingeB else { return nil }
+                return (ha, hb)
+            }
+            let a = kids.filter { holds(sideA, $0.0, $0.1) }.count, b = kids.filter { holds(sideB, $0.0, $0.1) }.count
+            keepA = a != b ? a > b : abs(Poly.signedArea(sideA)) >= abs(Poly.signedArea(sideB))
+        }
+        let kept = keepA ? sideA : sideB, gone = keepA ? sideB : sideA
+        let keptHoles = keepA ? holesA : holesB, goneHoles = keepA ? holesB : holesA
+        // Child creases must land wholly on one side; those on the cut-off side go with it.
+        var moving: Set<String> = []
+        for child in piece.panels where child.parent == panelID {
+            guard let ha = child.hingeA, let hb = child.hingeB else { continue }
+            let k = holds(kept, ha, hb), g = holds(gone, ha, hb)
+            guard k != g else { return .failure(.crossesFold) }
+            if g { moving.formUnion(piece.subtree(child.id)) }
+        }
+        // The cut-off part becomes a new piece in the same flat frame, posed where the
+        // panel was folded to.
+        let world = state.panelWorld(pieceID, panelID)
+        let id = state.makeID("piece")
+        var newPanels = [FreePanel(id: "P0", outline: gone, holes: goneHoles, top: panel.top, under: panel.under)]
+        for p in piece.panels where moving.contains(p.id) {
+            var q = p
+            if q.parent == panelID { q.parent = "P0" }
+            newPanels.append(q)
+        }
+        // Its root sits flat in its own frame, so the frame goes where the panel was.
+        var fresh = FreePiece(id: id, panels: newPanels, pose: world, stock: piece.stock, sheet: piece.isSheet)
+        fresh.nextPanel = piece.nextPanel
+        state.pieces[pi].panels.removeAll { moving.contains($0.id) }
+        if let j = state.pieces[pi].panelIndex(panelID) {
+            state.pieces[pi].panels[j].outline = kept
+            state.pieces[pi].panels[j].holes = keptHoles
+        }
+        state.pieces.append(fresh)
+        return .success(id)
+    }
+
+    static func minDistance(_ p: V2, _ poly: [V2]) -> Float {
+        var best = Float.greatestFiniteMagnitude
+        for i in 0..<poly.count { best = min(best, Poly.closestOnSegment(p, poly[i], poly[(i + 1) % poly.count]).dist) }
+        return best
+    }
+
+    // MARK: Creases
+
     public enum CreaseProblem: Error, Equatable {
-        case missesPanel, crossesCrease, tooThin
+        case missesPanel, crossesCrease, tooThin, crossesHole
+    }
+
+    /// Straightens a hand-drawn crease: nearly parallel or square to an edge snaps to
+    /// it, and a line passing close to a corner snaps through the corner.
+    public static func snapCrease(_ a: V2, _ b: V2, outline: [V2]) -> (V2, V2) {
+        let len = a.dist(b)
+        guard len > 1e-3 else { return (a, b) }
+        var dir = (b - a) / len
+        var mid = (a + b) / 2
+        var best: Float = radians(6)
+        for i in 0..<outline.count {
+            let e = (outline[(i + 1) % outline.count] - outline[i]).unit
+            for cand in [e, e.perp] {
+                // Compare as lines (direction and its reverse are the same crease).
+                let diff = acos(min(1, abs(dir.dotp(cand))))
+                if diff < best {
+                    best = diff
+                    dir = dir.dotp(cand) >= 0 ? cand : cand * -1
+                }
+            }
+        }
+        var nearest: Float = 0.3
+        var shift = V2(0, 0)
+        for v in outline {
+            let off = (v - mid).dotp(dir.perp)
+            if abs(off) < nearest {
+                nearest = abs(off)
+                shift = dir.perp * off
+            }
+        }
+        mid = mid + shift
+        return (mid - dir * (len / 2), mid + dir * (len / 2))
     }
 
     /// Adds a crease along the line through `a` and `b` (flat piece frame) across one
     /// panel. The side holding the panel's own crease stays; for the base panel the side
     /// holding more folds (or else the bigger side) stays. Returns the new flap's id.
-    public static func addCrease(_ piece: inout FreePiece, panel panelID: String, _ a: V2, _ b: V2) -> Result<String, CreaseProblem> {
+    public static func addCrease(_ piece: inout FreePiece, panel panelID: String, _ a: V2, _ b: V2,
+                                 kind: FoldKind = .valley) -> Result<String, CreaseProblem> {
         guard let pi = piece.panelIndex(panelID) else { return .failure(.missesPanel) }
         let panel = piece.panels[pi]
         guard let split = Poly.splitByLine(panel.outline, a, b) else { return .failure(.missesPanel) }
         let (left, right, p, q) = split
         guard abs(Poly.signedArea(left)) > 0.08, abs(Poly.signedArea(right)) > 0.08, p.dist(q) > 0.2 else {
             return .failure(.tooThin)
+        }
+        for hole in panel.holes {
+            for j in 0..<hole.count where Poly.segmentsCross(p, q, hole[j], hole[(j + 1) % hole.count]) {
+                return .failure(.crossesHole)
+            }
         }
         func holds(_ poly: [V2], _ ha: V2, _ hb: V2) -> Bool {
             Poly.onBoundary(poly, ha) && Poly.onBoundary(poly, hb) && Poly.onBoundary(poly, (ha + hb) / 2)
@@ -292,15 +541,17 @@ public enum Workshop {
         let newID = "P\(piece.nextPanel)"
         piece.nextPanel += 1
         piece.panels[pi].outline = kept
+        piece.panels[pi].holes = panel.holes.filter { Poly.contains(kept, Poly.centroid($0)) }
         for (ci, toFlap) in moves where toFlap { piece.panels[ci].parent = newID }
-        piece.panels.append(FreePanel(id: newID, outline: flap, parent: panelID, hingeA: p, hingeB: q,
-                                      top: panel.top, under: panel.under))
+        piece.panels.append(FreePanel(id: newID, outline: flap, holes: panel.holes.filter { Poly.contains(flap, Poly.centroid($0)) },
+                                      parent: panelID, hingeA: p, hingeB: q, fold: kind, top: panel.top, under: panel.under))
         return .success(newID)
     }
 
-    /// Snaps a fold angle to the nearest 15° when close (within 5°), and keeps it in ±180°.
-    public static func snapAngle(_ a: Float) -> Float {
-        let c = clampf(a, -.pi, .pi)
+    /// Keeps a fold angle on its crease's side (valley up, mountain down), within 180°,
+    /// snapping to the nearest 15° when close (within 5°).
+    public static func snapAngle(_ a: Float, kind: FoldKind = .valley) -> Float {
+        let c = kind == .valley ? clampf(a, 0, .pi) : clampf(a, -.pi, 0)
         let step = radians(15)
         let s = (c / step).rounded() * step
         return abs(s - c) < radians(5) ? s : c
@@ -308,15 +559,10 @@ public enum Workshop {
 
     /// First free spot for a new sheet, spiralling out from the mat's centre so earlier
     /// sheets and pieces stay where they are.
-    public static func freeSheetSpot(_ state: WorkshopState, size: V2 = sheetSize, pieceBounds: [(V2, V2)]) -> V3 {
-        var boxes: [(V2, V2)] = pieceBounds
-        for s in state.sheets {
-            let h = s.size / 2
-            boxes.append((s.center.xz - h, s.center.xz + h))
-        }
+    public static func freeSpot(size: V2, occupied boxes: [(V2, V2)]) -> V3 {
         let step = size + V2(1.5, 1.5)
         var candidates: [V2] = [V2(0, 0)]
-        for ring in 1...6 {
+        for ring in 1...8 {
             for i in -ring...ring {
                 for j in -ring...ring where max(abs(i), abs(j)) == ring {
                     candidates.append(V2(Float(i) * step.x, Float(j) * step.y))
@@ -331,7 +577,7 @@ public enum Workshop {
                 return c.onMat(0)
             }
         }
-        return V3(Float(state.sheets.count) * step.x, 0, 0)
+        return V3(Float(boxes.count) * step.x, 0, 0)
     }
 }
 
@@ -473,9 +719,100 @@ public extension Poly {
         return (A, B, ring[c1].p, ring[c2].p)
     }
 
+    /// Where a path crosses a polygon's outline, in order along the path.
+    struct PathCrossing {
+        /// Segment index along the path plus the fraction along that segment.
+        public var s: Float
+        /// Outline edge and fraction along it.
+        public var edge: Int
+        public var t: Float
+        public var point: V2
+    }
+
+    static func pathCrossings(_ path: [V2], closed: Bool, outline: [V2]) -> [PathCrossing] {
+        var out: [PathCrossing] = []
+        let segs = closed ? path.count : path.count - 1
+        guard segs > 0 else { return [] }
+        for i in 0..<segs {
+            let p = path[i], r = path[(i + 1) % path.count] - p
+            for e in 0..<outline.count {
+                let q = outline[e], v = outline[(e + 1) % outline.count] - q
+                let den = r.crossp(v)
+                guard abs(den) > 1e-9 else { continue }
+                let u = (q - p).crossp(v) / den
+                let t = (q - p).crossp(r) / den
+                if u >= 0 && u < 1 && t >= 0 && t < 1 {
+                    out.append(PathCrossing(s: Float(i) + u, edge: e, t: t, point: p + r * u))
+                }
+            }
+        }
+        return out.sorted { $0.s < $1.s }
+    }
+
+    /// The part of a path between two crossings, starting and ending on them.
+    static func subPath(_ path: [V2], closed: Bool, from a: PathCrossing, to b: PathCrossing) -> [V2] {
+        var out = [a.point]
+        let n = path.count
+        var i = Int(a.s) + 1
+        let end = Int(b.s)
+        if closed && b.s < a.s {
+            // Wrap around the loop.
+            while i < n { out.append(path[i]); i += 1 }
+            i = 0
+        }
+        while i <= end && i < n { out.append(path[i]); i += 1 }
+        out.append(b.point)
+        return out
+    }
+
+    static func pathMidpoint(_ path: [V2]) -> V2 {
+        Polyline(path.map { $0.onMat() }).point(at: Polyline(path.map { $0.onMat() }).length / 2).xz
+    }
+
+    static func isSimpleOpen(_ p: [V2]) -> Bool {
+        guard p.count > 3 else { return true }
+        for i in 0..<(p.count - 1) {
+            for j in stride(from: i + 2, to: p.count - 1, by: 1) where segmentsCross(p[i], p[i + 1], p[j], p[j + 1]) {
+                return false
+            }
+        }
+        return true
+    }
+
+    /// Splits a polygon (counter-clockwise) by a path that enters on edge `entry` and
+    /// leaves on edge `exit`, running inside in between. Returns both sides, CCW.
+    static func splitByPath(_ poly: [V2], _ path: [V2], entry: (Int, Float), exit: (Int, Float)) -> ([V2], [V2])? {
+        let n = poly.count
+        guard n >= 3, path.count >= 2 else { return nil }
+        /// Outline vertices met walking forward from one boundary point to another.
+        func walk(_ from: (Int, Float), _ to: (Int, Float)) -> [V2] {
+            if from.0 == to.0 && to.1 >= from.1 { return [] }
+            var out: [V2] = []
+            var k = (from.0 + 1) % n
+            var steps = 0
+            while steps <= n {
+                out.append(poly[k])
+                if k == to.0 { break }
+                k = (k + 1) % n
+                steps += 1
+            }
+            return out
+        }
+        func clean(_ p: [V2]) -> [V2] {
+            var out: [V2] = []
+            for q in p where out.last.map({ $0.dist(q) > 1e-5 }) ?? true { out.append(q) }
+            if let f = out.first, let l = out.last, out.count > 2, f.dist(l) < 1e-5 { out.removeLast() }
+            return Poly.signedArea(out) < 0 ? out.reversed() : out
+        }
+        let a = clean(path + walk(exit, entry))
+        let b = clean(path.reversed() + walk(entry, exit))
+        guard a.count >= 3, b.count >= 3 else { return nil }
+        return (a, b)
+    }
+
     /// Ray against a flat slab (outline × [0, thickness]) in its own frame. Returns the
     /// distance along the ray and whether the top face (y = thickness) was hit.
-    static func raySlab(origin o: V3, dir d: V3, outline: [V2], thickness t: Float) -> (distance: Float, top: Bool)? {
+    static func raySlab(origin o: V3, dir d: V3, outline: [V2], holes: [[V2]] = [], thickness t: Float) -> (distance: Float, top: Bool)? {
         guard abs(d.y) > 1e-6 else { return nil }
         let y: Float = d.y < 0 ? t : 0
         // Coming from above we meet the top face first; from below, the underside.
@@ -483,6 +820,6 @@ public extension Poly {
         let k = (y - o.y) / d.y
         guard k > 0 else { return nil }
         let p = o + d * k
-        return contains(outline, p.xz) ? (k, d.y < 0) : nil
+        return contains(outer: outline, holes: holes, p.xz) ? (k, d.y < 0) : nil
     }
 }

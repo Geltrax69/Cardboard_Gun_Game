@@ -244,6 +244,25 @@ public enum MeshBuilder {
     // MARK: Low-poly primitives (flat shaded)
 
     /// Prism along +y from 0 to `height`, `sides`-gon cross-section.
+    /// Dash-dot line (mountain fold notation): long dash, short gap, dot, short gap.
+    public static func dashDot(_ a: V3, _ b: V3, dash: Float = 0.26, dot: Float = 0.06, gap: Float = 0.09, width: Float = 0.055,
+                               normal: V3 = V3(0, 1, 0), into m: inout MeshData) {
+        let len = a.dist(b)
+        guard len > 1e-4 else { return }
+        let dir = (b - a) / len
+        var s: Float = 0
+        while s < len {
+            let e = min(len, s + dash)
+            ribbon([a + dir * s, a + dir * e], width: width, normal: normal, into: &m, extend: false)
+            s = e + gap
+            if s < len {
+                let d = min(len, s + dot)
+                ribbon([a + dir * s, a + dir * d], width: width, normal: normal, into: &m, extend: false)
+                s = d + gap
+            }
+        }
+    }
+
     public static func prism(sides: Int, radius: Float, height: Float, phase: Float = 0) -> MeshData {
         frustum(sides: sides, bottom: radius, top: radius, height: height, phase: phase)
     }
