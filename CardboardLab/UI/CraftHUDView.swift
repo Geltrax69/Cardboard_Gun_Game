@@ -21,6 +21,8 @@ struct CraftHUDView: View {
                         HomeButton(size: 64 * s) { engine.goToMenu() }
                         RoundIconButton(systemName: "questionmark", size: 50 * s) { engine.showGuide(startsCraft: false) }
                             .padding(.top, 7 * s)
+                        HandButton(size: 50 * s)
+                            .padding(.top, 7 * s)
                         if engine.viewAdjusted {
                             RoundIconButton(systemName: "arrow.uturn.backward", size: 50 * s) { engine.resetView() }
                                 .padding(.top, 7 * s)
@@ -61,6 +63,12 @@ struct CraftHUDView: View {
                 .id(hud.titleID)
                 .transition(.asymmetric(insertion: .offset(y: -12).combined(with: .opacity), removal: .opacity))
 
+                if engine.handMode {
+                    ExploreHint(scale: s)
+                        .padding(.top, 10 * s)
+                        .transition(.opacity)
+                }
+
                 Spacer()
 
                 if let info = hud.finish {
@@ -73,7 +81,12 @@ struct CraftHUDView: View {
                 // Bottom bar.
                 ZStack(alignment: .bottom) {
                     HStack(alignment: .bottom) {
-                        toolChip(s)
+                        if engine.handMode {
+                            ExplorePad(scale: s)
+                                .transition(.scale(scale: 0.8).combined(with: .opacity))
+                        } else {
+                            toolChip(s)
+                        }
                         Spacer()
                         if hud.nextVisible {
                             NextButton(title: hud.nextTitle, scale: s) {
@@ -94,6 +107,7 @@ struct CraftHUDView: View {
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.75), value: hud.nextVisible)
         .animation(.spring(response: 0.35, dampingFraction: 0.75), value: engine.viewAdjusted)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: engine.handMode)
         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: hud.finish)
         .animation(.easeOut(duration: 0.3), value: hud.titleID)
     }

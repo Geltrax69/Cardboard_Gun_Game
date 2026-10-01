@@ -54,7 +54,6 @@ final class WorkshopSession: BuildSession {
         case fold(piece: String, panel: String, grab: V3, angle: Float, kind: FoldKind)
         case move(root: String, start: Pose, current: Pose, planeY: Float, from: V3, last: V2, centre: V3, moved: Bool)
         case paint
-        case pan(last: V2)
         case tap(at: V2)
     }
     private var drag: Drag?
@@ -195,7 +194,6 @@ final class WorkshopSession: BuildSession {
         case .paint: paintPointer(phase, ray)
         case .move: movePointer(phase, p, ray)
         case .glue: gluePointer(phase, p, ray)
-        case .view: panPointer(phase, p)
         }
     }
 
@@ -829,21 +827,6 @@ final class WorkshopSession: BuildSession {
             engine.particles.sparks(at: hit.world, count: 10)
             success("Glued!", at: hit.world + V3(0, 0.8, 0))
             status("Glued — they move together now. Tap another piece to glue more.")
-        }
-    }
-
-    // MARK: Look
-
-    private func panPointer(_ phase: PointerPhase, _ p: V2) {
-        switch phase {
-        case .began:
-            drag = .pan(last: p)
-        case .moved:
-            guard case let .pan(last)? = drag else { return }
-            rig.userPan(dx: p.x - last.x, dy: p.y - last.y)
-            drag = .pan(last: p)
-        case .ended, .cancelled:
-            drag = nil
         }
     }
 

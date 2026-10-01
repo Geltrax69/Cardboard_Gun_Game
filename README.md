@@ -32,8 +32,9 @@ files you add there are compiled with no project edits.
 | **Fold** | Drag the highlighted flap along the curved blue arrow. Past ~70% it snaps: *Perfect fold*. |
 | **Glue** | Drag the glue bottle along the dotted blue guide on the tab. |
 | **Align / connect** | Drag the piece onto its glowing mint outline; it snaps into place: *Tab aligned*. |
-| **Rotate the view** | Two-finger drag orbits around the build (or one finger when no tool is active, e.g. while *Next* is showing). |
-| **Zoom** | Pinch. The ↶ button next to Home returns to the step's own framing. |
+| **Rotate the view** | Two-finger drag orbits around the build (or one finger when no tool is active, e.g. while *Next* is showing). A two-finger gesture either turns or zooms, so pinching never spins the view. |
+| **Zoom** | Pinch: it zooms toward the spot between your fingers, from far out to right up close. The ↶ button next to Home returns to the step's own framing. |
+| **Hand (explore)** | The ✋ button (next to Home, or *Hand* in Free Mode's tool column) hands every touch to the camera: drag to look around, two fingers to move, pinch to zoom in close (keep pinching to fly forward into the build), double-tap anything to fly to it, and walk with the joystick (hold *Up* / *Down* to float). Tap it again — or any Free Mode tool — to get back to work. |
 
 There are no timers, lives or score loss. Straying off a line only shows *Try following
 the highlighted line*. A ghost finger demonstrates each gesture the first time and
@@ -78,7 +79,7 @@ There are no parts to pick: you draw, cut, fold, paint and build whatever you li
 | **Paint** | A full colour wheel (hue round the rim, saturation toward the centre), a brightness slider, ready-made shades and your recent colours. Tap or brush over faces — top or underside — or switch to *Whole piece*. |
 | **Move** | Drag any piece or whole sheet. **Slide** moves it across the table, **Lift** raises and lowers it, **Turn** spins it freely in 3D. Tap one for Turn 45°, Stand up, Flip, To table, Copy, Unglue and Delete. |
 | **Glue** | Tap a piece, then the piece to stick it onto: they move together from then on. |
-| **Look** | Drag to slide around the table; two fingers turn the view, pinch zooms. |
+| **Hand** | Explore the bench: drag to look, two fingers to move, pinch to zoom, double-tap to fly to a spot, joystick to walk. |
 
 **New sheet** opens the sheet picker: *Small* 14×10, *Large* 20×14, *Long* 28×10 (room
 for a long sword) or *Huge* 28×20, in any cardboard, dropped on the next free spot of the

@@ -23,7 +23,7 @@ enum WorkshopCommand: Equatable {
 @MainActor
 final class WorkshopModel: ObservableObject {
     enum Tool: String, CaseIterable {
-        case cut, crease, fold, paint, move, glue, view
+        case cut, crease, fold, paint, move, glue
 
         var title: String {
             switch self {
@@ -33,7 +33,6 @@ final class WorkshopModel: ObservableObject {
             case .paint: return "Paint"
             case .move: return "Move"
             case .glue: return "Glue"
-            case .view: return "Look"
             }
         }
 
@@ -45,7 +44,6 @@ final class WorkshopModel: ObservableObject {
             case .paint: return "paintbrush.fill"
             case .move: return "hand.draw.fill"
             case .glue: return "drop.fill"
-            case .view: return "eye.fill"
             }
         }
 
@@ -58,7 +56,6 @@ final class WorkshopModel: ObservableObject {
             case .paint: return "Pick a colour, then tap or brush over any face."
             case .move: return "Drag any piece or sheet. Pick Slide, Lift or Turn below; tap a piece for more."
             case .glue: return "Tap a piece, then tap the piece to stick it onto."
-            case .view: return "Drag to slide around the table · two fingers to turn · pinch to zoom."
             }
         }
     }

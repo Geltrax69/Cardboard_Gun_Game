@@ -16,7 +16,12 @@ struct WorkshopView: View {
                 topBar(s)
                 Spacer()
                 HStack(alignment: .bottom) {
-                    options(s)
+                    if engine.handMode {
+                        ExplorePad(scale: s)
+                            .transition(.scale(scale: 0.8).combined(with: .opacity))
+                    } else {
+                        options(s)
+                    }
                     Spacer()
                     if model.cutting {
                         cancelButton(s)
@@ -32,7 +37,7 @@ struct WorkshopView: View {
                 Spacer()
             }
             .padding(.leading, 16 * s)
-            if model.tool == .paint {
+            if model.tool == .paint && !engine.handMode {
                 HStack {
                     Spacer()
                     ColorWheelPanel(scale: s)
@@ -54,6 +59,7 @@ struct WorkshopView: View {
         .animation(.easeOut(duration: 0.25), value: model.showHelp)
         .animation(.easeOut(duration: 0.25), value: model.showSheetPicker)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: model.cutting)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: engine.handMode)
     }
 
     // MARK: Top bar
@@ -63,7 +69,8 @@ struct WorkshopView: View {
             HomeButton(size: 64 * s) { engine.goToMenu() }
             VStack(alignment: .leading, spacing: 4 * s) {
                 OutlinedText(text: "Free Mode", font: LabFont.black(32 * s), fill: .labCardboardLight, width: 2.5 * s, depth: 4 * s)
-                Text(model.status.isEmpty ? model.tool.help : model.status)
+                Text(engine.handMode ? "Exploring — drag to look, two fingers to move, pinch to zoom, double-tap to fly there. Pick a tool to get back to work."
+                                     : (model.status.isEmpty ? model.tool.help : model.status))
                     .font(LabFont.bold(16 * s))
                     .foregroundStyle(Color.labPaper)
                     .shadow(color: .labInk, radius: 0, x: 0, y: 2)
@@ -123,9 +130,10 @@ struct WorkshopView: View {
     private func toolPalette(_ s: CGFloat) -> some View {
         VStack(spacing: 8 * s) {
             ForEach(WorkshopModel.Tool.allCases, id: \.self) { tool in
-                let on = model.tool == tool
+                let on = model.tool == tool && !engine.handMode
                 Button {
                     engine.sound.play(.tap)
+                    engine.setHandMode(false)
                     model.tool = tool
                 } label: {
                     VStack(spacing: 2 * s) {
@@ -145,7 +153,31 @@ struct WorkshopView: View {
                 .buttonStyle(PressableStyle())
                 .disabled(model.busy)
             }
+            handTool(s)
         }
+    }
+
+    /// Hand mode: touches move the camera so you can walk round and through the build.
+    private func handTool(_ s: CGFloat) -> some View {
+        let on = engine.handMode
+        return Button {
+            engine.toggleHandMode()
+        } label: {
+            VStack(spacing: 2 * s) {
+                Image(systemName: on ? "hand.raised.fill" : "hand.raised")
+                    .font(.system(size: 22 * s, weight: .bold))
+                    .foregroundStyle(on ? Color.labInk : Color.labYellow)
+                Text("Hand")
+                    .font(LabFont.heavy(11 * s))
+                    .foregroundStyle(on ? Color.labInk : Color.labPaper)
+            }
+            .frame(width: 84 * s, height: 64 * s)
+            .background(RoundedRectangle(cornerRadius: 16 * s, style: .continuous).fill(on ? Color.labYellow : Color.labInk.opacity(0.92)))
+            .overlay(RoundedRectangle(cornerRadius: 16 * s, style: .continuous).stroke(on ? Color.labInk : Color.labYellow, lineWidth: 2))
+        }
+        .buttonStyle(PressableStyle())
+        .disabled(model.busy && !on)
+        .accessibilityLabel(on ? "Stop exploring" : "Explore with the hand")
     }
 
     /// Cut is red and fold lines are blue, like the lines they make.
@@ -381,6 +413,7 @@ struct WorkshopView: View {
             ("arrow.uturn.up", "Fold", "Grab the flap beside a fold line and drag it to any angle."),
             ("paintbrush.fill", "Paint", "Choose any colour on the wheel and brush it over faces, pieces or whole sheets."),
             ("hand.draw.fill", "Move & glue", "Slide, lift or turn any piece or whole sheet, stand it up, stack it and glue it on."),
+            ("hand.raised.fill", "Hand", "Tap Hand to explore: drag to look round, two fingers to move, pinch to zoom in close, double-tap to fly to a spot, and walk with the joystick."),
             ("doc.badge.plus", "Unlimited cardboard", "New sheet gives you any size — Long and Huge fit swords — in any cardboard. Undo fixes any slip."),
         ]
         return VStack(alignment: .leading, spacing: 12 * s) {
@@ -391,7 +424,7 @@ struct WorkshopView: View {
                         .font(.system(size: 18 * s, weight: .bold))
                         .foregroundStyle(Color.labInk)
                         .frame(width: 38 * s, height: 38 * s)
-                        .background(Circle().fill(i == 0 ? Color.labRed : (i < 3 ? Color.labBlue : Color.labMint)))
+                        .background(Circle().fill(i == 0 ? Color.labRed : (i < 3 ? Color.labBlue : (i == 5 ? Color.labYellow : Color.labMint))))
                     VStack(alignment: .leading, spacing: 2 * s) {
                         Text(steps[i].1).font(LabFont.heavy(17 * s)).foregroundStyle(Color.labPaper)
                         Text(steps[i].2).font(LabFont.semibold(14 * s)).foregroundStyle(Color.labPaper.opacity(0.8))

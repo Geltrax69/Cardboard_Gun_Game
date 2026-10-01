@@ -51,7 +51,9 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
     let hud = HUDModel()
     let workshop = WorkshopModel()
     private(set) var session: CraftSession?
-    @Published private(set) var screen: AppScreen = .menu
+    @Published private(set) var screen: AppScreen = .menu {
+        didSet { if screen != oldValue { handMode = false } }
+    }
     @Published private(set) var menuAnchors: [String: MenuAnchor] = [:]
     @Published private(set) var toasts: [Toast] = []
     @Published var selectedTool: String = "knife"
@@ -62,8 +64,24 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
     @Published private(set) var guideStartsCraft = false
     /// The player has rotated / zoomed the crafting view (shows the reset button).
     @Published private(set) var viewAdjusted = false
-    /// One-finger orbit while no tool is active.
+    /// Hand mode: every touch moves the camera (look, move, zoom, walk) instead of the
+    /// tool, so the player can explore what they're making from any angle.
+    @Published private(set) var handMode = false
+    /// Joystick input while exploring: x sideways, y up, z forward (−1…1 each).
+    var walkInput = V3(0, 0, 0)
+    /// One-finger orbit while no tool is active (and in hand mode).
     private var idleOrbitLast: V2?
+    /// Last pointer position, so a tool drag can be cancelled where it was.
+    private var lastPointer = V2(0, 0)
+    /// Hand mode double tap.
+    private var lastTap: (at: V2, time: Double)?
+    private var tapStart: V2?
+    /// Two-finger gesture: decided once whether it turns or zooms (outside hand mode).
+    private enum TwoFinger { case undecided, rotate, zoom }
+    private var twoFinger = TwoFinger.undecided
+    private var twoFingerPan: Float = 0
+    private var twoFingerScale: Float = 1
+    private var pinchFocus: (point: V3, normal: V3)?
     private var sessionTask: Task<Void, Never>?
     /// Bumped whenever a session starts or is abandoned, so a cancelled session's
     /// unwinding can't clobber the state of whatever replaced it.
@@ -130,6 +148,7 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
         lastTimestamp = now
         time += dt
         tweener.update(dt)
+        if handMode, walkInput.len > 0.01 { rig.userWalk(walkInput, dt: Float(dt)) }
         for handler in Array(frameHandlers.values) { handler(dt) }
         particles.update(Float(dt))
         rig.update(dt)
@@ -168,6 +187,11 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
 
     func pointer(_ phase: PointerPhase, at point: CGPoint) {
         let p = V2(Float(point.x), Float(point.y))
+        lastPointer = p
+        if handMode && cameraControlEnabled {
+            handPointer(phase, p)
+            return
+        }
         if let handler = pointerHandler {
             idleOrbitLast = nil
             handler(phase, p)
@@ -175,6 +199,10 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
         }
         // No tool in hand: one finger turns the view.
         guard cameraControlEnabled else { idleOrbitLast = nil; return }
+        orbitPointer(phase, p)
+    }
+
+    private func orbitPointer(_ phase: PointerPhase, _ p: V2) {
         switch phase {
         case .began:
             idleOrbitLast = p
@@ -187,6 +215,62 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
         case .ended, .cancelled:
             idleOrbitLast = nil
         }
+    }
+
+    /// Hand mode, one finger: drag to look around; double tap to fly to that spot.
+    private func handPointer(_ phase: PointerPhase, _ p: V2) {
+        orbitPointer(phase, p)
+        switch phase {
+        case .began:
+            tapStart = p
+        case .moved:
+            if let s = tapStart, s.dist(p) > 12 { tapStart = nil }
+        case .ended:
+            guard tapStart != nil else { lastTap = nil; return }
+            tapStart = nil
+            if let last = lastTap, time - last.time < 0.35, last.at.dist(p) < 40 {
+                lastTap = nil
+                if let w = worldPoint(at: p) {
+                    rig.focus(on: w, tweener: tweener)
+                    sound.play(.whoosh, volume: 0.4)
+                }
+            } else {
+                lastTap = (p, time)
+            }
+        case .cancelled:
+            tapStart = nil
+        }
+    }
+
+    /// The first thing under a screen point (cardboard, tools, the table), or the table
+    /// plane.
+    func worldPoint(at p: V2) -> V3? {
+        let hits = scnView.hitTest(CGPoint(x: CGFloat(p.x), y: CGFloat(p.y)),
+                                   options: [.searchMode: SCNHitTestSearchMode.closest.rawValue, .ignoreHiddenNodes: true])
+        if let h = hits.first {
+            let w = h.worldCoordinates
+            return V3(Float(w.x), Float(w.y), Float(w.z))
+        }
+        return rig.orbit.hit(p, planeY: 0)
+    }
+
+    /// Turns hand mode on or off. Any tool drag in progress is cancelled first.
+    func toggleHandMode() {
+        setHandMode(!handMode)
+    }
+
+    func setHandMode(_ on: Bool) {
+        guard on != handMode else { return }
+        if on {
+            pointerHandler?(.cancelled, lastPointer)
+            toast("Drag to look · two fingers to move · pinch to zoom · double-tap to fly there", .info, life: 3.2)
+        }
+        handMode = on
+        rig.exploring = on
+        walkInput = V3(0, 0, 0)
+        idleOrbitLast = nil
+        lastTap = nil
+        sound.play(.tap)
     }
 
     // MARK: Camera control (rotate / zoom the 3D view)
@@ -205,19 +289,61 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
         scnView.addGestureRecognizer(pinch)
     }
 
+    /// Two fingers: in hand mode they move the view; otherwise they turn it, unless the
+    /// gesture has already turned out to be a pinch.
     @objc private func handleTwoFingerPan(_ g: UIPanGestureRecognizer) {
         guard cameraControlEnabled else { return }
+        if g.state == .began { startTwoFinger() }
         let t = g.translation(in: scnView)
-        rig.userRotate(dx: Float(t.x), dy: Float(t.y))
         g.setTranslation(.zero, in: scnView)
+        let dx = Float(t.x), dy = Float(t.y)
+        if handMode {
+            rig.userPanScreen(dx: dx, dy: dy)
+        } else {
+            twoFingerPan += (dx * dx + dy * dy).squareRoot()
+            decideTwoFinger()
+            if twoFinger == .rotate { rig.userRotate(dx: dx, dy: dy) }
+        }
         syncViewAdjusted()
     }
 
+    /// Pinch zooms toward the point between the fingers, which stays under them.
     @objc private func handlePinch(_ g: UIPinchGestureRecognizer) {
         guard cameraControlEnabled else { return }
-        rig.userPinch(Float(g.scale))
+        let c = g.location(in: scnView)
+        let centre = V2(Float(c.x), Float(c.y))
+        if g.state == .began {
+            startTwoFinger()
+            pinchFocus = worldPoint(at: centre).map { ($0, rig.orbit.forward) }
+        }
+        let scale = Float(g.scale)
         g.scale = 1
+        if g.state == .ended || g.state == .cancelled { pinchFocus = nil }
+        if !handMode {
+            twoFingerScale *= scale
+            decideTwoFinger()
+            guard twoFinger == .zoom else { return }
+        }
+        // Track the focus on its depth plane as the fingers move.
+        var focus = pinchFocus?.point
+        if let f = pinchFocus, handMode, let q = rig.orbit.hit(centre, planePoint: f.point, normal: f.normal) { focus = q }
+        rig.userZoom(by: scale, toward: focus)
         syncViewAdjusted()
+    }
+
+    private func startTwoFinger() {
+        twoFinger = .undecided
+        twoFingerPan = 0
+        twoFingerScale = 1
+    }
+
+    private func decideTwoFinger() {
+        guard twoFinger == .undecided else { return }
+        if abs(twoFingerScale - 1) > 0.07 {
+            twoFinger = .zoom
+        } else if twoFingerPan > 22 {
+            twoFinger = .rotate
+        }
     }
 
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {

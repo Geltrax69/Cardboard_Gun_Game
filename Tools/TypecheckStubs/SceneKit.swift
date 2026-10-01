@@ -166,6 +166,22 @@ open class SCNView: UIView {
     open var allowsCameraControl = false
     open var isJitteringEnabled = false
     open func snapshot() -> UIImage { UIImage() }
+    open func hitTest(_ point: CGPoint, options: [SCNHitTestOption: Any]? = nil) -> [SCNHitTestResult] { [] }
+}
+
+public struct SCNHitTestOption: Hashable, RawRepresentable {
+    public var rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public static let searchMode = SCNHitTestOption(rawValue: "searchMode")
+    public static let ignoreHiddenNodes = SCNHitTestOption(rawValue: "ignoreHiddenNodes")
+    public static let categoryBitMask = SCNHitTestOption(rawValue: "categoryBitMask")
+}
+
+public enum SCNHitTestSearchMode: Int { case closest, all, any }
+
+open class SCNHitTestResult: NSObject {
+    open var node: SCNNode { SCNNode() }
+    open var worldCoordinates: SCNVector3 { SCNVector3() }
 }
 
 open class SCNRenderer: NSObject {

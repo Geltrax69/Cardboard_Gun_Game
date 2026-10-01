@@ -40,10 +40,14 @@ final class CameraRig {
     let camera = SCNCamera()
     /// Camera chosen by the game (each step's framing).
     private(set) var base = OrbitCamera()
-    /// Player orbit on top of the base camera (two-finger drag / pinch).
+    /// Player orbit on top of the base camera (two-finger drag / pinch / hand mode).
     private(set) var userYaw: Float = 0
     private(set) var userPitch: Float = 0
     private(set) var userZoom: Float = 1
+    /// Player move of the orbit centre (zooming toward a point, panning, walking).
+    private(set) var userShift = V3(0, 0, 0)
+    /// Hand mode: the camera may dip lower and fly in past the closest zoom.
+    var exploring = false
     /// Fractions of the screen covered by HUD at the top and bottom.
     var safeTop: Float = 0.17
     var safeBottom: Float = 0.15
@@ -51,28 +55,39 @@ final class CameraRig {
 
     static let minPolar: Float = 0.03
     static let maxPolar: Float = 1.35
-    static let zoomRange: ClosedRange<Float> = 0.45...2.2
+    /// Hand mode lets the camera come down almost to table level.
+    static let maxExplorePolar: Float = 1.52
+    /// Closest the camera gets to the point it orbits.
+    static let minDistance: Float = 1.6
+    /// How far out the player can zoom, as a multiple of the step's framing.
+    static let maxZoom: Float = 4
+    /// The eye never goes below this height (the table top is y = 0).
+    static let minEyeHeight: Float = 0.35
+
+    private var maxPolarNow: Float { exploring ? CameraRig.maxExplorePolar : CameraRig.maxPolar }
 
     /// The camera actually rendered (base + player orbit). Input, overlays and toasts all
     /// project through this, so they stay correct while the view is rotated.
     var orbit: OrbitCamera {
         var o = base
+        o.target = base.target + userShift
         o.azimuth = base.azimuth + userYaw
-        o.polar = clampf(base.polar + userPitch, CameraRig.minPolar, CameraRig.maxPolar)
+        o.polar = clampf(base.polar + userPitch, CameraRig.minPolar, maxPolarNow)
         o.distance = base.distance * userZoom
         return o
     }
 
-    /// True while the player has turned or zoomed away from the step's framing.
+    /// True while the player has turned, zoomed or moved away from the step's framing.
     var isUserAdjusted: Bool {
-        abs(userYaw) > 0.02 || abs(userPitch) > 0.02 || abs(userZoom - 1) > 0.02
+        abs(userYaw) > 0.02 || abs(userPitch) > 0.02 || abs(userZoom - 1) > 0.02 || userShift.len > 0.05
     }
 
     init() {
         camera.fieldOfView = 30
         camera.projectionDirection = .vertical
-        camera.zNear = 0.5
-        camera.zFar = 500
+        // Near plane close in, so the camera can get right up to a build.
+        camera.zNear = 0.1
+        camera.zFar = 400
         node.camera = camera
         node.name = "camera"
         apply()
@@ -113,6 +128,7 @@ final class CameraRig {
         userYaw = 0
         userPitch = 0
         userZoom = 1
+        userShift = V3(0, 0, 0)
         apply()
     }
 
@@ -130,7 +146,7 @@ final class CameraRig {
 
     private func transition(to target: OrbitCamera) -> (Float) -> Void {
         let from = base
-        let yaw0 = userYaw, pitch0 = userPitch, zoom0 = userZoom
+        let yaw0 = userYaw, pitch0 = userPitch, zoom0 = userZoom, shift0 = userShift
         return { [weak self] k in
             guard let self else { return }
             var o = from.lerp(target, k)
@@ -139,6 +155,7 @@ final class CameraRig {
             self.userYaw = yaw0 * (1 - k)
             self.userPitch = pitch0 * (1 - k)
             self.userZoom = zoom0 + (1 - zoom0) * k
+            self.userShift = shift0 * (1 - k)
             self.apply()
         }
     }
@@ -150,7 +167,8 @@ final class CameraRig {
     func userRotate(dx: Float, dy: Float) {
         userYaw -= dx * 0.0085
         let pitch = userPitch + dy * 0.0065
-        userPitch = clampf(pitch, CameraRig.minPolar - base.polar, CameraRig.maxPolar - base.polar)
+        userPitch = clampf(pitch, CameraRig.minPolar - base.polar, maxPolarNow - base.polar)
+        keepEyeAboveTable()
         apply()
     }
 
@@ -158,28 +176,91 @@ final class CameraRig {
     /// follows the finger.
     func userPan(dx: Float, dy: Float) {
         let o = orbit
-        let k = 2 * o.distance * tan(o.fovY / 2) / max(o.viewSize.y, 1)
+        let k = o.unitsPerPoint(atDepth: o.distance)
         var ahead = V3(o.up.x - o.back.x, 0, o.up.z - o.back.z)
         ahead = ahead.len > 1e-4 ? ahead.unit : V3(0, 0, -1)
-        base.target = base.target - o.right * (dx * k) + ahead * (dy * k)
+        userShift = userShift - o.right * (dx * k) + ahead * (dy * k)
         apply()
     }
 
-    /// Pinch: scale > 1 zooms in.
-    func userPinch(_ scale: Float) {
-        guard scale > 0.01 else { return }
-        userZoom = clampf(userZoom / scale, CameraRig.zoomRange.lowerBound, CameraRig.zoomRange.upperBound)
+    /// Moves the view in the screen plane (two fingers in hand mode): whatever is under
+    /// the fingers follows them.
+    func userPanScreen(dx: Float, dy: Float) {
+        let o = orbit
+        let k = o.unitsPerPoint(atDepth: o.distance)
+        userShift = userShift - o.right * (dx * k) + o.up * (dy * k)
+        keepEyeAboveTable()
         apply()
+    }
+
+    /// Pinch (scale > 1 zooms in) toward a world point, which stays under the fingers.
+    /// Zooming in past the closest distance flies forward instead when exploring, so the
+    /// camera can travel into and through a build.
+    func userZoom(by scale: Float, toward focus: V3?) {
+        guard scale > 0.01 else { return }
+        let o = orbit
+        let maxD = max(base.distance * CameraRig.maxZoom, 40)
+        let wanted = o.distance / scale
+        let d = clampf(wanted, CameraRig.minDistance, maxD)
+        let ratio = d / o.distance
+        if let p = focus {
+            // Scaling the whole camera about p keeps p at the same spot on screen.
+            let target = p + (o.target - p) * ratio
+            userShift = userShift + (target - o.target)
+        }
+        if exploring, wanted < CameraRig.minDistance {
+            let dir = focus.map { ($0 - o.eye).len > 1e-3 ? ($0 - o.eye).unit : o.forward } ?? o.forward
+            userShift = userShift + dir * (CameraRig.minDistance - wanted)
+        }
+        userZoom = d / max(base.distance, 1e-3)
+        keepEyeAboveTable()
+        apply()
+    }
+
+    /// Walks the camera: `move.z` forward along the table, `move.x` sideways, `move.y` up,
+    /// each −1…1; speed grows with how far out the camera is.
+    func userWalk(_ move: V3, dt: Float) {
+        let o = orbit
+        var ahead = V3(o.forward.x, 0, o.forward.z)
+        if ahead.len < 0.2 { ahead = V3(o.up.x, 0, o.up.z) }
+        ahead = ahead.len > 1e-4 ? ahead.unit : V3(0, 0, -1)
+        let speed = max(3, o.distance * 0.8) * dt
+        userShift = userShift + (ahead * move.z + o.right * move.x + V3(0, 1, 0) * move.y) * speed
+        keepEyeAboveTable()
+        apply()
+    }
+
+    /// Glides the view so it orbits `point`, a little closer in (double tap in hand mode).
+    func focus(on point: V3, tweener: Tweener) {
+        let o = orbit
+        let shift0 = userShift, zoom0 = userZoom
+        let shift1 = userShift + (point - o.target)
+        let d1 = clampf(o.distance * 0.6, CameraRig.minDistance * 1.5, max(base.distance * CameraRig.maxZoom, 40))
+        let zoom1 = d1 / max(base.distance, 1e-3)
+        tweener.start(0.5, ease: .inOutCubic, tag: "cameraFocus") { [weak self] k in
+            guard let self else { return }
+            self.userShift = mix3(shift0, shift1, k)
+            self.userZoom = mixf(zoom0, zoom1, k)
+            self.keepEyeAboveTable()
+            self.apply()
+        }
+    }
+
+    /// The camera never dips under the table.
+    private func keepEyeAboveTable() {
+        let low = orbit.eye.y
+        if low < CameraRig.minEyeHeight { userShift.y += CameraRig.minEyeHeight - low }
     }
 
     /// Eases back to the step's own framing.
     func resetUserView(tweener: Tweener, duration: Double = 0.6) {
-        let yaw0 = userYaw, pitch0 = userPitch, zoom0 = userZoom
+        let yaw0 = userYaw, pitch0 = userPitch, zoom0 = userZoom, shift0 = userShift
         tweener.start(duration, ease: .inOutCubic, tag: "cameraReset") { [weak self] k in
             guard let self else { return }
             self.userYaw = yaw0 * (1 - k)
             self.userPitch = pitch0 * (1 - k)
             self.userZoom = zoom0 + (1 - zoom0) * k
+            self.userShift = shift0 * (1 - k)
             self.apply()
         }
     }
