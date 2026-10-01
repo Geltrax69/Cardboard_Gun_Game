@@ -37,7 +37,7 @@ final class TemplateSheet {
 
         for def in template.pieces {
             let piece = PieceNode(def: def, stock: stock, showFoldLines: true, inkVisible: false)
-            piece.pose = KnifeBlueprint.sheetPose(def)
+            piece.pose = WeaponBlueprint.sheetPose(def)
             root.addChildNode(piece.root)
             pieces[def.id] = piece
 

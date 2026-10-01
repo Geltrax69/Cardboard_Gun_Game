@@ -5,7 +5,7 @@ Cut cardboard along red lines, score and fold along blue dashed lines, glue tabs
 assemble real 3D cardboard objects. The first project is a **cardboard knife**; more
 weapons (pistol, rifle) are on the menu as upcoming blueprints.
 
-> CUT → SCORE/FOLD → GLUE → ALIGN → FOLD → ASSEMBLE → FINISHED
+> CUT → HANDLE → BLADE → FITTINGS → ASSEMBLE → SHARPEN → FINISHED
 
 ## Requirements
 
@@ -38,16 +38,19 @@ There are no timers, lives or score loss. Straying off a line only shows *Try fo
 the highlighted line*. A ghost finger demonstrates each gesture the first time and
 again if you pause. You can turn hints off in Settings.
 
-### The knife, step by step
+### A weapon, step by step
 
-| Step | What happens |
+Every weapon goes through the same stages; ones a design doesn't need are skipped, so
+the HUD shows 5 or 6 steps.
+
+| Stage | What happens |
 |---|---|
-| 1 · Cut | The pencil traces the template. Cut out the blade, handle and guard band, and punch the two lanyard holes. Each freed piece lifts out (+100 CRAFT), then the leftover board slides away. |
-| 2 · Score & fold | Score the five handle creases, then the camera tilts to 3/4 and you fold the walls, end cap and glue tab up. |
-| 3 · Glue | Lay a glue bead along the tucked-in tab. |
-| 4 · Align | Fold the lid onto the glued tab (highlighted mint) until it snaps. |
-| 5 · Fold | Score the blade spine, pinch the ridge, glue the tang. |
-| 6 · Assemble | Slide the blade into the handle, glue and drop the guard band on, and it wraps itself round. The finished knife pops up with confetti. |
+| Cut | The pencil traces the template. Cut out every piece and punch any lanyard holes. Each freed piece lifts out (+CRAFT); matching grip bands after the first are cut in one quick pass. The leftover board slides away. |
+| Handle | Score the five handle creases, fold the walls, end cap and glue tab up in 3/4 view, glue the tab, then close the lid onto it (*Tab aligned*). |
+| Blade | **Ridge** blades: score the spine and pinch a ridge, then glue the tang. **Laminated** (single-edged) blades: score the fold, glue the first layer, then fold the mirrored twin over on top. |
+| Fittings | Guards, pommels and axe heads are U-shaped clips: score both creases, glue the top wing, fold the wings up. |
+| Assemble | The handle lifts off the mat. Slide the guard on, push the blade through it into the handle, fit the pommel or axe head, and drop the grip bands on: they wrap themselves round. |
+| Sharpen | Rub the **sanding block** along each edge: a sanded bevel appears behind it and the tip flashes when it's shaped. Swords with a fuller get it carved with the craft knife. The finished weapon pops up with confetti. |
 
 The **How to build the Knife** guide (menu → *How to build*, the **?** button while
 crafting, or Settings) shows all eight stages rendered from the real 3D pieces.
@@ -62,13 +65,14 @@ CardboardLab/
                 Polygon/Polyline · Template (pieces, panels, hinges, union outlines)
                 FoldRig (fold kinematics) · MeshBuilder (flat-shaded meshes)
                 PathTracer (finger → tool along a path) · CameraMath · Tweener
-                KnifeBlueprint · Stock
+                WeaponDesign (parameters) · BladeShapes (blade outlines)
+                WeaponBlueprint (design → pieces, folds, assembly, glue & bevels) · Stock
   Scene/      SceneKit building blocks: palette, materials, procedural textures,
               low-poly props, workspace, menu stacks, PieceNode, TemplateSheet,
               cut/score/glue visuals, particles, icon & guide renderer
   Engine/     GameEngine (loop, input, screens), CameraRig, HUD model, SoundBoard,
               guide overlay (arrows, dotted guides, ghost finger)
-  Game/       Crafting sessions and interactions: CraftSession, KnifeSession,
+  Game/       Crafting sessions and interactions: CraftSession, WeaponSession,
               TraceInteraction (cut/score/glue), FoldInteraction, PlaceInteraction,
               GhostHint, PlayerProfile, Catalog
   UI/         SwiftUI: menu, crafting HUD, guide, components
@@ -116,7 +120,7 @@ Rules of thumb:
 
 - **Valley** folds hinge about the printed face (the flap rises toward you). **Mountain**
   folds hinge about the underside. Because the board has real thickness, size
-  neighbouring panels with `t` in mind. `KnifeBlueprint` shows how a lid is `W + t` wide
+  neighbouring panels with `t` in mind. `WeaponBlueprint.handlePanels` shows how a lid is `W + t` wide
   so it covers the wall, and how a tucked tab's wall is `H − t` tall so the lid sits flush.
 - Holes go in `PanelDef(holes:)`. They are cut as small red circles and punch out.
 - The piece outline is computed as the union of its panels. Panels must share edges
@@ -125,14 +129,19 @@ Rules of thumb:
   `Tools/run-core-tests.sh`, then render a preview of any fold state with
   `python3 Tools/render_preview.py .build/core-tests/knife.json knife.png --pitch 40 --yaw 35`.
 
-### Adding a new project (for example the pistol)
+### Adding a new weapon
 
-1. Write a blueprint in `Core/` (like `KnifeBlueprint`): pieces, fold targets,
-   assembly poses and glue paths. Add checks to `Tools/CoreTests/main.swift`.
-2. Write a session in `Game/` (like `KnifeSession`) using the ready-made interactions:
-   `TraceInteraction.cut/score/glue`, `FoldInteraction`, `PlaceInteraction`.
-3. Mark it `.playable` in `Game/Catalog.swift` and add it to the switch in
-   `GameEngine.runSession`.
+Knives, daggers, swords and axes need no new code: describe one with a `WeaponDesign`
+(blade build, tip, edge, length, width, curve, guard, pommel or axe head, grip bands)
+and give it a `ProjectInfo` in `Game/Catalog.swift`. `WeaponBlueprint` generates the
+pieces and `WeaponSession` builds it. `Tools/run-core-tests.sh` checks every campaign
+weapon plus hundreds of random designs and writes `weapon_<id>.json` / `sheet_<id>.json`
+previews.
+
+Something completely different (for example the pistol) gets its own blueprint in
+`Core/` and its own `CraftSession` subclass in `Game/`, built from the ready-made
+interactions: `TraceInteraction.cut/score/glue/sand/carve`, `FoldInteraction`,
+`PlaceInteraction`.
 
 ## Style
 

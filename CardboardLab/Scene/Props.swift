@@ -66,6 +66,23 @@ enum Props {
         return root
     }
 
+    // MARK: Sanding block — shapes and sharpens edges. Origin at the middle of the
+    // sanding face, length along +x, grip up (+y).
+
+    static func sandingBlock() -> SCNNode {
+        let root = SCNNode()
+        root.name = "sandingBlock"
+        root.addChildNode(part(MeshBuilder.box(V3(1.7, 0.08, 0.95), center: V3(0, 0.04, 0)), Palette.cardboardDark, outline: 0.015))
+        root.addChildNode(part(MeshBuilder.box(V3(1.6, 0.4, 0.86), center: V3(0, 0.28, 0)), Palette.red))
+        let grip = MeshBuilder.prism(sides: 6, radius: 0.24, height: 1.1, phase: .pi / 6)
+            .transformed(.translation(V3(-0.55, 0.66, 0)) * alongX)
+        root.addChildNode(part(grip, Palette.ink, outline: 0.015))
+        for x: Float in [-0.45, 0.45] {
+            root.addChildNode(part(MeshBuilder.box(V3(0.14, 0.2, 0.22), center: V3(x, 0.55, 0)), Palette.ink, outline: 0.01))
+        }
+        return root
+    }
+
     // MARK: Glue bottle — origin at the nozzle tip, body up (+y).
 
     static func glueBottle() -> SCNNode {

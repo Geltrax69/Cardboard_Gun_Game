@@ -141,6 +141,16 @@ func runWeaponTests(outDir: String) {
                 let inside = path.points.filter { Poly.contains(outer: panel.outline, holes: panel.holes, $0.xz) || minEdgeDist(panel.outline, $0.xz) < 0.05 }
                 check(inside.count >= path.points.count - 1, "\(tag) path off panel \(path.piece).\(path.panel): \(inside.count)/\(path.points.count)")
             }
+            // Sanded bevels lie inside their panels and have some width along most of the edge.
+            for path in bp.sharpenPaths {
+                guard let panel = bp.piece(path.piece)?.panel(path.panel) else { continue }
+                let inner = path.inset(into: panel, width: 0.28)
+                let inside = inner.filter { Poly.contains(outer: panel.outline, holes: panel.holes, $0.xz) || minEdgeDist(panel.outline, $0.xz) < 0.02 }
+                check(inside.count == inner.count, "\(tag) bevel leaves \(path.piece).\(path.panel) \(String(describing: design.endClip)) w=\(bp.W) \(zip(path.points, inner).filter { !(Poly.contains(outer: panel.outline, holes: panel.holes, $0.1.xz) || minEdgeDist(panel.outline, $0.1.xz) < 0.02) }) outline \(panel.outline)")
+                let wide = zip(path.points, inner).filter { $0.0.dist($0.1) > 0.1 }.count
+                check(wide * 2 >= inner.count, "\(tag) bevel too thin on \(path.piece).\(path.panel): \(wide)/\(inner.count)")
+            }
+            check(design.stages.first == .cut && design.stages.contains(.assemble), "\(tag) stages")
             if index < WeaponDesign.campaign.count && t == 0.14 {
                 exportWeapon(bp, outDir: outDir)
             }
@@ -170,15 +180,53 @@ func exportWeapon(_ bp: WeaponBlueprint, outDir: String) {
             items.append((m, bp.assembledPose(p.id) * ps[panel.id]!, ["#E2A652", "#E8B062", "#B17330", "#0D2730"]))
         }
     }
+    // Sanded bevels as the game draws them (band between the edge and its inset).
     for path in bp.sharpenPaths {
+        guard let p = bp.piece(path.piece), let panel = p.panel(path.panel) else { continue }
+        var rig = FoldRig(piece: p, thickness: t)
+        rig.angles = bp.finishedAngles(p.id)
+        let inner = path.inset(into: panel, width: 0.3)
+        var band = MeshData(parts: 1), shine = MeshData(parts: 1)
+        let lift = path.normal * 0.004
+        for i in 0..<(path.points.count - 1) {
+            let o0 = mix3(path.points[i], inner[i], 0.1) + lift, o1 = mix3(path.points[i + 1], inner[i + 1], 0.1) + lift
+            let i0 = inner[i] + lift, i1 = inner[i + 1] + lift
+            band.quad(0, o0, o1, i1, i0, facing: path.normal)
+            shine.quad(0, o0 + path.normal * 0.002, o1 + path.normal * 0.002, mix3(o1, i1, 0.32) + path.normal * 0.002,
+                       mix3(o0, i0, 0.32) + path.normal * 0.002, facing: path.normal)
+        }
+        let pose = bp.assembledPose(p.id) * rig.pose(of: path.panel)
+        items.append((band, pose, ["#F3C274"]))
+        items.append((shine, pose, ["#F8F7EF"]))
+    }
+    for path in bp.fullerPaths {
         guard let p = bp.piece(path.piece) else { continue }
         var rig = FoldRig(piece: p, thickness: t)
         rig.angles = bp.finishedAngles(p.id)
         var m = MeshData()
-        MeshBuilder.ribbon(path.points, width: 0.2, normal: path.normal, into: &m)
-        items.append((m, bp.assembledPose(p.id) * rig.pose(of: path.panel), ["#F3C274"]))
+        MeshBuilder.ribbon(path.points.map { $0 + path.normal * 0.004 }, width: 0.15, normal: path.normal, into: &m)
+        items.append((m, bp.assembledPose(p.id) * rig.pose(of: path.panel), ["#B17330"]))
     }
     exportScene("weapon_\(bp.design.id)", items)
+
+    // Mid-assembly: guard and pommel waiting at their ready poses, blade half way in.
+    var ready: [(MeshData, Pose, [String])] = []
+    for p in bp.template.pieces where !p.id.hasPrefix("wrap") {
+        var rig = FoldRig(piece: p, thickness: t)
+        rig.angles = bp.finishedAngles(p.id)
+        let ps = rig.poses()
+        let pose: Pose
+        switch p.id {
+        case "guard", "end": pose = bp.clipReady(p.id)
+        case "blade": pose = bp.bladeReady.lerp(bp.bladeSeated, 0.5)
+        default: pose = .identity
+        }
+        for panel in p.panels {
+            let m = MeshBuilder.cardboard(outline: panel.outline, holes: panel.holes, thickness: t, inkEdges: p.freeEdges(of: panel.id))
+            ready.append((m, pose * ps[panel.id]!, ["#E2A652", "#E8B062", "#B17330", "#0D2730"]))
+        }
+    }
+    exportScene("ready_\(bp.design.id)", ready)
 
     var flat: [(MeshData, Pose, [String])] = []
     let holes = bp.template.pieces.map { Poly.translate($0.outline, $0.placement) }

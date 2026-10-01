@@ -22,7 +22,7 @@ struct GuideView: View {
         Step(id: 5, title: "Close the top", text: "Fold the lid onto the glued tab until it snaps."),
         Step(id: 6, title: "Fold the blade", text: "Pinch a ridge along the spine, then glue the tang."),
         Step(id: 7, title: "Connect the pieces", text: "Slide the blade into the handle and wrap the guard band."),
-        Step(id: 8, title: "Finished!", text: "A sturdy low-poly cardboard knife, ready to show off."),
+        Step(id: 8, title: "Sharpen & shape", text: "Sand both edges into a bevel and shape the tip. Done!"),
     ]
 
     var body: some View {

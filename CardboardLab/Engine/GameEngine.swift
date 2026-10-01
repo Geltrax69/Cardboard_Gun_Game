@@ -374,7 +374,7 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
         sessionTask = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                try await self.introSheet(stock: stock)
+                try await self.introSheet(project: project, stock: stock)
                 if self.sessionToken == token { self.transitioning = false }
                 try await self.runSession(project: project, stock: stock)
             } catch {
@@ -383,9 +383,9 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
         }
     }
 
-    private func introSheet(stock: CardboardStock) async throws {
+    private func introSheet(project: ProjectInfo, stock: CardboardStock) async throws {
         clearCraft()
-        let size = KnifeBlueprint(thickness: stock.thickness).template.sheetSize
+        let size = project.design.map { WeaponBlueprint(design: $0, thickness: stock.thickness).template.sheetSize } ?? V2(15, 10)
         let from = menu.topSheetWorldPose(stock.id)
         menu.hideTopSheet(stock.id, true)
         let sheet = makeBlankSheet(stock: stock, size: size)
@@ -411,11 +411,8 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
 
     /// Runs the project's crafting script, then returns to the menu.
     private func runSession(project: ProjectInfo, stock: CardboardStock) async throws {
-        let s: CraftSession
-        switch project.id {
-        case ProjectInfo.knife.id: s = KnifeSession(engine: self, stock: stock)
-        default: return
-        }
+        guard let design = project.design else { return }
+        let s = WeaponSession(engine: self, project: project, design: design, stock: stock)
         session = s
         try await s.run()
         s.cleanup()

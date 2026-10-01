@@ -33,8 +33,16 @@ do {
     check(t2.count == 9, "concave pentagon should give 3 triangles")
 }
 
-// MARK: Knife template
-let bp = KnifeBlueprint(thickness: 0.14)
+// MARK: Knife template (the first campaign weapon)
+extension WeaponBlueprint {
+    var handle: PieceDef { piece("handle")! }
+    var bladePiece: PieceDef { piece("blade")! }
+    var guardBand: PieceDef { piece("wrap0")! }
+    var guardOnHandle: Pose { wrapMount(0) }
+    var halfWidth: Float { design.blade!.width / 2 }
+    var handleGluePath: [V3] { handleGlue.points }
+}
+let bp = WeaponBlueprint(design: .knife, thickness: 0.14)
 let t = bp.t
 do {
     for piece in bp.template.pieces {
@@ -110,7 +118,7 @@ do {
 
 // MARK: Blade ridge
 do {
-    var rig = FoldRig(piece: bp.blade, thickness: t)
+    var rig = FoldRig(piece: bp.bladePiece, thickness: t)
     rig.angles = bp.bladeAngles(1)
     let root = bp.bladeRootPose(1)
     let ps = rig.poses()
@@ -123,7 +131,7 @@ do {
     // Seated tang stays inside the handle cavity.
     let seat = bp.bladeSeated
     var pts: [V3] = []
-    for p in bp.blade.panels {
+    for p in bp.bladePiece.panels {
         let pose = seat * rig.pose(of: p.id)
         for q in p.outline where q.x > 0.01 {
             pts.append(pose.apply(q.onMat(0)))
@@ -276,7 +284,7 @@ do {
     sheet.append(sm)
     items.append((sheet, .identity, ["#D69A48", "#E8B062", "#B17330", "#0D2730"]))
     for piece in bp.template.pieces {
-        items += pieceMeshes(piece, rig: FoldRig(piece: piece, thickness: t), pose: KnifeBlueprint.sheetPose(piece))
+        items += pieceMeshes(piece, rig: FoldRig(piece: piece, thickness: t), pose: WeaponBlueprint.sheetPose(piece))
         var lines = MeshData()
         MeshBuilder.ribbon((piece.outline + [piece.outline[0]]).map { ($0 + piece.placement).onMat(t + 0.01) }, width: 0.08, into: &lines)
         for p in piece.panels {
@@ -298,13 +306,13 @@ do {
     // Assembled knife.
     var hr = FoldRig(piece: bp.handle, thickness: t)
     hr.foldAll()
-    var br = FoldRig(piece: bp.blade, thickness: t)
+    var br = FoldRig(piece: bp.bladePiece, thickness: t)
     br.angles = bp.bladeAngles(1)
     var gr = FoldRig(piece: bp.guardBand, thickness: t)
     gr.foldAll()
     let handlePose = Pose.translation(V3(0, 1.5, 0))
     var knife = pieceMeshes(bp.handle, rig: hr, pose: handlePose)
-    knife += pieceMeshes(bp.blade, rig: br, pose: handlePose * bp.bladeSeated)
+    knife += pieceMeshes(bp.bladePiece, rig: br, pose: handlePose * bp.bladeSeated)
     knife += pieceMeshes(bp.guardBand, rig: gr, pose: handlePose * bp.guardOnHandle)
     exportScene("knife", knife)
 

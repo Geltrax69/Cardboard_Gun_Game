@@ -3,7 +3,7 @@ import Foundation
 
 /// Tool shown in the bottom-left chip during crafting.
 enum HUDTool: String {
-    case knife, scorer, hand, glue, none
+    case knife, scorer, hand, glue, sander, none
 
     var title: String {
         switch self {
@@ -11,6 +11,7 @@ enum HUDTool: String {
         case .scorer: return "Bone Folder"
         case .hand: return "Hands"
         case .glue: return "Glue"
+        case .sander: return "Sanding Block"
         case .none: return ""
         }
     }
@@ -20,6 +21,7 @@ enum HUDTool: String {
         case .knife: return "tool.knife"
         case .glue: return "tool.glue"
         case .scorer: return "tool.folder"
+        case .sander: return "tool.sander"
         case .hand, .none: return nil
         }
     }
@@ -29,6 +31,7 @@ enum HUDTool: String {
         case .hand: return "hand.draw.fill"
         case .scorer: return "ruler.fill"
         case .glue: return "drop.fill"
+        case .sander: return "sparkles"
         default: return "scissors"
         }
     }
@@ -42,6 +45,10 @@ struct FinishInfo: Equatable {
     var seconds: Int
     var perfectFolds: Int
     var iconKey: String
+    /// Project to start again from the card's "Craft again" button.
+    var project: ProjectInfo
+    /// Level reached, when this craft levelled the player up.
+    var levelUp: Int? = nil
 }
 
 /// State of the crafting HUD. Sessions write it; SwiftUI renders it.

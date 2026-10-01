@@ -115,6 +115,11 @@ public struct ClipSpec: Codable, Equatable {
     }
 }
 
+/// One stage of a weapon build.
+public enum WeaponStage: String, CaseIterable {
+    case cut, handle, blade, fittings, assemble, sharpen
+}
+
 public enum WeaponKind: String, Codable, CaseIterable {
     case knife, dagger, sword, axe
 
@@ -162,8 +167,22 @@ public struct WeaponDesign: Codable, Equatable, Identifiable {
         self.wraps = wraps
     }
 
-    /// Steps shown in the HUD for this design.
-    public var stepCount: Int { 6 }
+    /// Build stages for this design (the HUD's STEP n / N).
+    public var stages: [WeaponStage] {
+        var s: [WeaponStage] = [.cut, .handle]
+        if blade != nil { s.append(.blade) }
+        if guardClip != nil || endClip != nil { s.append(.fittings) }
+        s.append(.assemble)
+        if blade != nil || endClip?.style.isAxeHead == true { s.append(.sharpen) }
+        return s
+    }
+
+    public var stepCount: Int { stages.count }
+
+    /// Number of separate pieces on the sheet.
+    public var pieceCount: Int {
+        1 + (blade != nil ? 1 : 0) + (guardClip != nil ? 1 : 0) + (endClip != nil ? 1 : 0) + wraps.count
+    }
 
     /// Keeps Free Craft parameters inside ranges the generator handles.
     public func sanitized() -> WeaponDesign {

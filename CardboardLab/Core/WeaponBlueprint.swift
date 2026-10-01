@@ -8,6 +8,32 @@ public struct SurfacePath {
     public var points: [V3]
     /// Outward normal of the face the path lies on (flat frame).
     public var normal: V3
+
+    /// Each point moved up to `width` into the panel on the same face: the inner border
+    /// of a sanded bevel. The offset shrinks where the panel narrows (toward a tip).
+    public func inset(into panel: PanelDef, width: Float) -> [V3] {
+        let n = points.count
+        guard n > 1 else { return points }
+        func inside(_ q: V3) -> Bool { Poly.contains(outer: panel.outline, holes: panel.holes, q.xz) }
+        // One side for the whole path, chosen by majority so a stray tooth can't flip it.
+        var votes = 0
+        for i in 0..<n {
+            let side = normal.crossp(tangent(i)).unit
+            votes += inside(points[i] + side * 0.1) ? 1 : (inside(points[i] - side * 0.1) ? -1 : 0)
+        }
+        let sign: Float = votes >= 0 ? 1 : -1
+        return (0..<n).map { i in
+            let side = normal.crossp(tangent(i)).unit * sign
+            var w = width
+            while w > 0.015 && !inside(points[i] + side * w) { w *= 0.7 }
+            return points[i] + side * (w > 0.015 ? w : 0)
+        }
+    }
+
+    func tangent(_ i: Int) -> V3 {
+        let a = points[max(0, i - 1)], b = points[min(points.count - 1, i + 1)]
+        return (b - a).unit
+    }
 }
 
 /// Turns a `WeaponDesign` into everything the crafting session needs: the cut-out
@@ -216,6 +242,13 @@ public struct WeaponBlueprint {
         return Pose.translation(V3(L + 2 * t, -clearance, 0)) * Pose(rot: rot)
     }
 
+    /// Clip lined up just off its end of the handle, ready to slide on.
+    public func clipReady(_ pieceID: String) -> Pose {
+        let isGuard = pieceID == "guard"
+        let gap = ((isGuard ? design.guardClip : design.endClip)?.depth ?? 0.6) + 0.7
+        return isGuard ? Pose.translation(V3(-gap, 0, 0)) * guardMount : Pose.translation(V3(gap, 0, 0)) * endMount
+    }
+
     /// Band wrapped around the handle `inset` from its front.
     public func wrapMount(_ i: Int) -> Pose {
         let inset = i < design.wraps.count ? design.wraps[i] : 0.12
@@ -317,7 +350,7 @@ public struct WeaponBlueprint {
 
     /// Cutting edge(s) of an axe head wing, in wing space.
     public static func wingEdges(_ c: ClipSpec, hw: Float) -> [[V2]] {
-        let S = max(c.span, hw + 0.2), D = c.depth
+        let S = max(c.span, hw + 0.3), D = c.depth
         switch c.style {
         case .bit: return [[V2(S * 0.9, 0.02), V2(S, D * 0.25), V2(S * 1.02, D * 0.6), V2(S * 0.85, D)]]
         case .bearded: return [[V2(S * 0.85, 0.02), V2(S, D * 0.2), V2(S * 1.04, D * 0.62), V2(S * 0.78, D)]]

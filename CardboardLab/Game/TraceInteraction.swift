@@ -135,6 +135,49 @@ final class TraceInteraction {
                                 hintText: "Drag the glue along the dotted guide")
     }
 
+    /// Sanding block: flat on the face, long side along the edge, sitting over the bevel
+    /// and scrubbing back and forth while it moves.
+    static func sand(session: CraftSession, bevel: BevelNode, block: SCNNode, normal: V3, inward: V3,
+                     showHint: Bool) -> TraceInteraction {
+        let engine = session.engine
+        let n = normal.unit
+        var dust: Float = 0
+        var lastMove: Double = -1
+        let tool = TraceTool(node: block, pose: { tip, tangent in
+            var x = tangent - n * tangent.dotp(n)
+            x = x.len > 1e-4 ? x.unit : V3(1, 0, 0)
+            let z = x.crossp(n)
+            let scrub: Float = engine.time - lastMove < 0.15 ? Float(sin(engine.time * 34)) * 0.14 : 0
+            return Pose(rot: Quat.fromBasis(x: x, y: n, z: z), pos: tip + inward * 0.18 + x * scrub + n * 0.01)
+        }, onAdvance: { head, _, moved in
+            lastMove = engine.time
+            engine.sound.play(.sand, volume: 0.7, minInterval: 0.09)
+            dust += moved
+            if dust > 0.3 {
+                dust = 0
+                engine.particles.flakes(at: head + n * 0.1, count: 3, direction: n)
+            }
+        })
+        return TraceInteraction(session: session, visual: bevel, tool: tool, showHint: showHint,
+                                hintText: "Rub the block along the yellow guide")
+    }
+
+    /// Craft knife carving a groove (fuller) into the face of the blade.
+    static func carve(session: CraftSession, groove: BevelNode, knife: SCNNode, showHint: Bool) -> TraceInteraction {
+        let engine = session.engine
+        var flakeDistance: Float = 0
+        let tool = TraceTool(node: knife, pose: { knifePose(tip: $0, tangent: $1) }, onAdvance: { head, tangent, moved in
+            engine.sound.play(.cut, volume: 0.6, minInterval: 0.07)
+            flakeDistance += moved
+            if flakeDistance > 0.35 {
+                flakeDistance = 0
+                engine.particles.flakes(at: head, count: 2, direction: tangent)
+            }
+        })
+        return TraceInteraction(session: session, visual: groove, tool: tool, showHint: showHint,
+                                hintText: "Carve along the red dashes")
+    }
+
     // MARK: Run
 
     func run() async throws {

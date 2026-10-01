@@ -1,7 +1,7 @@
 import Foundation
 
 /// Craft projects shown on the menu. Add a new weapon/object here and give it a
-/// blueprint + session script (see KnifeSession) to make it playable.
+/// `WeaponDesign` (built by WeaponSession) to make it playable.
 struct ProjectInfo: Identifiable, Equatable {
     enum Kind: Equatable {
         case playable
@@ -16,8 +16,11 @@ struct ProjectInfo: Identifiable, Equatable {
     let reward: Int
     /// Project whose completion reveals this one (its blueprint may still be on the way).
     var unlockedBy: String? = nil
+    /// Weapon built by this project.
+    var design: WeaponDesign? = nil
 
-    static let knife = ProjectInfo(id: "knife", name: "Knife", steps: 6, kind: .playable, reward: 250)
+    static let knife = ProjectInfo(id: "knife", name: "Knife", steps: WeaponDesign.knife.stepCount, kind: .playable, reward: 250,
+                                   design: .knife)
     static let pistol = ProjectInfo(id: "pistol", name: "Pistol", steps: 8, kind: .locked(requirement: "Craft the knife to unlock"),
                                     reward: 400, unlockedBy: "knife")
     static let rifle = ProjectInfo(id: "rifle", name: "Rifle", steps: 10, kind: .locked(requirement: "Craft the pistol to unlock"),

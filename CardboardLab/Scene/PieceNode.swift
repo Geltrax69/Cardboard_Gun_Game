@@ -172,26 +172,49 @@ final class PieceNode {
     var foldedBounds: (min: V3, max: V3) { rig.foldedBounds() }
 }
 
-/// Builds the finished knife for icons, the guide and the reveal.
+/// Builds finished weapons for icons, the guide and the menu.
 @MainActor
-enum KnifeModel {
-    static func assembled(stock: CardboardStock) -> SCNNode {
-        let bp = KnifeBlueprint(thickness: stock.thickness)
+enum WeaponModel {
+    /// The assembled weapon centred on the origin, blade along −x, edges sanded.
+    static func assembled(_ design: WeaponDesign, stock: CardboardStock, sharpened: Bool = true) -> SCNNode {
+        let bp = WeaponBlueprint(design: design, thickness: stock.thickness)
         let root = SCNNode()
-        root.name = "knifeModel"
-        let handle = PieceNode(def: bp.handle, stock: stock, showFoldLines: false)
-        handle.foldAll()
-        let blade = PieceNode(def: bp.blade, stock: stock, showFoldLines: false)
-        blade.setAngles(bp.bladeAngles(1))
-        blade.pose = bp.bladeSeated
-        let band = PieceNode(def: bp.guardBand, stock: stock, showFoldLines: false)
-        band.foldAll()
-        band.pose = bp.guardOnHandle
+        root.name = "weapon-\(design.id)"
         let assembly = SCNNode()
-        for p in [handle, blade, band] { assembly.addChildNode(p.root) }
-        // Centre the knife on the origin (its span is roughly x −6.4…4.5, y 0…1.6).
-        assembly.position = SCNVector3(0.95, -0.7, 0)
+        for def in bp.template.pieces {
+            let piece = PieceNode(def: def, stock: stock, showFoldLines: false)
+            piece.setAngles(bp.finishedAngles(def.id))
+            for p in def.panels where p.hinge != nil { piece.setCrease(p.id, 1) }
+            piece.pose = bp.assembledPose(def.id)
+            if sharpened { addFinish(to: piece, bp: bp) }
+            assembly.addChildNode(piece.root)
+        }
+        assembly.setPose(.translation(bp.assembledCentre * -1))
         root.addChildNode(assembly)
         return root
+    }
+
+    /// Sanded bevels and carved fullers on a finished piece.
+    static func addFinish(to piece: PieceNode, bp: WeaponBlueprint) {
+        for surface in bp.sharpenPaths where surface.piece == piece.def.id {
+            guard let panel = piece.def.panel(surface.panel), let node = piece.panelNodes[surface.panel] else { continue }
+            let bevel = BevelNode(surface: surface, inner: surface.inset(into: panel, width: 0.3), toWorld: .identity, style: .bevel)
+            bevel.setProgress(bevel.path.length)
+            bevel.setActive(false, time: 0)
+            node.addChildNode(bevel.root)
+        }
+        for surface in bp.fullerPaths where surface.piece == piece.def.id {
+            guard let node = piece.panelNodes[surface.panel] else { continue }
+            let groove = BevelNode(surface: surface, inner: surface.points, toWorld: .identity, style: .groove)
+            groove.setProgress(groove.path.length)
+            groove.setActive(false, time: 0)
+            node.addChildNode(groove.root)
+        }
+    }
+
+    /// Length of the finished weapon's longest side (for framing).
+    static func span(_ design: WeaponDesign, stock: CardboardStock) -> Float {
+        let b = WeaponBlueprint(design: design, thickness: stock.thickness).assembledBounds()
+        return max(b.max.x - b.min.x, b.max.z - b.min.z)
     }
 }

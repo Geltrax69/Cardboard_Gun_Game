@@ -31,7 +31,7 @@ struct CraftHUDView: View {
                         craftBadge(s)
                     }
                     VStack(spacing: 10 * s) {
-                        OutlinedText(text: "STEP \(hud.stepIndex) / \(hud.stepCount)", font: LabFont.black(26 * s),
+                        OutlinedText(text: hud.stepIndex > hud.stepCount ? "COMPLETE" : "STEP \(hud.stepIndex) / \(hud.stepCount)", font: LabFont.black(26 * s),
                                      fill: .labPaper, width: 2 * s, depth: 3 * s)
                         StepSegments(current: hud.stepIndex, count: hud.stepCount, scale: s)
                     }
@@ -197,7 +197,7 @@ struct NextButton: View {
     }
 }
 
-/// "Knife crafted!" card shown over the spinning finished object.
+/// "Knife crafted!" card shown over the spinning finished weapon.
 struct FinishCard: View {
     @EnvironmentObject var engine: GameEngine
     @EnvironmentObject var hud: HUDModel
@@ -231,7 +231,7 @@ struct FinishCard: View {
             VStack(spacing: 12 * s) {
                 Button {
                     hud.finish = nil
-                    engine.craftAgain(.knife)
+                    engine.craftAgain(info.project)
                 } label: {
                     Label("Craft again", systemImage: "arrow.counterclockwise")
                 }

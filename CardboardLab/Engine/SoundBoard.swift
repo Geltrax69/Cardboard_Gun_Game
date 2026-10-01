@@ -2,7 +2,7 @@ import AVFoundation
 import Foundation
 
 enum Sfx: CaseIterable {
-    case cut, score, glue, fold, snap, success, coin, pop, tap, whoosh
+    case cut, score, glue, fold, snap, success, coin, pop, tap, whoosh, sand, levelUp
 }
 
 /// Tiny synthesiser: every sound effect is generated at launch (no audio assets), and
@@ -141,6 +141,23 @@ final class SoundBoard {
             }
         case .tap:
             return buffer(0.035) { t, k in sine(900, t) * (1 - k) * 0.25 }
+        case .sand:
+            // Gritty rasp: high-passed noise with a fast scrubbing tremolo.
+            var lp: Float = 0
+            return buffer(0.12) { t, k in
+                let n = noise()
+                lp += (n - lp) * 0.35
+                return (n - lp) * sin(.pi * k) * (0.55 + 0.45 * sine(36, t)) * 0.55
+            }
+        case .levelUp:
+            // Rising arpeggio.
+            return buffer(0.7) { t, k in
+                let notes: [Float] = [523.3, 659.3, 784.0, 1046.5]
+                let i = min(3, Int(k * 4))
+                let local = k * 4 - Float(i)
+                let f = notes[i]
+                return (sine(f, t) * 0.55 + sine(f * 2, t) * 0.12) * exp(-local * 3) * 0.42
+            }
         case .whoosh:
             var lp: Float = 0
             return buffer(0.45) { _, k in
