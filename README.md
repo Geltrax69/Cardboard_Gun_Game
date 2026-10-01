@@ -1,9 +1,9 @@
 # Cardboard Lab
 
 A tactile, low-poly 3D **iPad** crafting game written in **Swift** (SwiftUI + SceneKit).
-Cut cardboard along red lines, score and fold along blue dashed lines, glue tabs and
-assemble real 3D cardboard objects. The first project is a **cardboard knife**; more
-weapons (pistol, rifle) are on the menu as upcoming blueprints.
+Cut cardboard along red lines, score and fold along blue dashed lines, glue tabs,
+assemble and sharpen real 3D cardboard weapons. Twelve knives, daggers, swords and
+axes unlock as you level up; the pistol and rifle are on the menu as upcoming blueprints.
 
 > CUT → HANDLE → BLADE → FITTINGS → ASSEMBLE → SHARPEN → FINISHED
 
@@ -37,6 +37,28 @@ files you add there are compiled with no project edits.
 There are no timers, lives or score loss. Straying off a line only shows *Try following
 the highlighted line*. A ghost finger demonstrates each gesture the first time and
 again if you pause. You can turn hints off in Settings.
+
+### Weapons and levels
+
+| Level | Weapon | Build |
+|---|---|---|
+| 1 | Knife | Drop-point ridge blade, lanyard hole, guard band |
+| 2 | Dagger | Spear-point ridge blade, bar guard, diamond pommel |
+| 3 | Kunai | Leaf blade, slim handle, three grip bands |
+| 4 | Bowie Knife | Laminated clip-point blade, guard, knob pommel |
+| 5 | Short Sword | Leaf blade with a fuller, flared guard |
+| 6 | Hand Axe | Long shaft, single-bit axe head |
+| 7 | Flame Dagger | Wavy flame blade, spiked guard, spike pommel |
+| 8 | Karambit | Hooked laminated blade with a saw back |
+| 9 | Scimitar | Strongly curved laminated blade |
+| 10 | Longsword | 11.5-unit ridge blade, fuller, long grip |
+| 11 | Katana | Curved tanto-tip blade, disc guard, four wraps |
+| 12 | Battle Axe | Double-bit head on a long shaft |
+
+Crafting a weapon for the first time earns exactly the XP needed for the next level
+(`Core/Progression.swift`), which unlocks the next weapon. Crafting again earns 40% XP.
+The finish card shows **LEVEL UP!** and what it unlocked; new weapons wear a **NEW**
+badge on the menu.
 
 ### A weapon, step by step
 

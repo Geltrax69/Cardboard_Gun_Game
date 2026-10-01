@@ -754,7 +754,8 @@ final class WeaponSession: CraftSession {
         engine.sound.play(.pop)
         rig.addShake(0.22)
         reward(project.reward, at: top.pos + V3(0, 1.8, 0))
-        engine.profile.recordCompletion(project.id)
+        let result = engine.profile.recordCompletion(project)
+        engine.toast("+\(result.xp) XP", .info, at: top.pos + V3(0, 2.6, 0), life: 1.6)
 
         // Slow turntable spin with a gentle bob.
         var angle: Float = 0
@@ -765,6 +766,14 @@ final class WeaponSession: CraftSession {
             self.weaponRoot.setPose(Pose(rot: Quat(axis: up3, angle: angle) * top.rot, pos: top.pos + bob))
         }
         try await tw.wait(0.8)
+        var unlocked: [String] = []
+        if result.leveledUp {
+            unlocked = ProjectInfo.weapons.filter { $0.level > result.levelBefore && $0.level <= result.levelAfter }.map { $0.name }
+            engine.sound.play(.levelUp)
+            engine.particles.confetti(at: top.pos + V3(0, 1.5, 0), count: 60, power: 9)
+            engine.toast("LEVEL \(result.levelAfter)!", .reward, life: 2.2)
+            try await tw.wait(0.5)
+        }
         let icon = engine.icons.weaponIcon(design, stock: stock)
         hud.finish = FinishInfo(title: "\(design.name) crafted!",
                                 subtitle: design.stages.contains(.sharpen) ? "Cut · Folded · Glued · Assembled · Sharpened"
@@ -773,7 +782,10 @@ final class WeaponSession: CraftSession {
                                 seconds: Int(engine.time - startTime),
                                 perfectFolds: perfectFolds,
                                 iconKey: icon,
-                                project: project)
+                                project: project,
+                                xp: result.xp,
+                                levelUp: result.leveledUp ? result.levelAfter : nil,
+                                unlocked: unlocked)
         let model = hud
         hud.consumeTap()
         try await tw.until { model.nextTapped }

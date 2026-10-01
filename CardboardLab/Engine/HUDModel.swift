@@ -47,8 +47,12 @@ struct FinishInfo: Equatable {
     var iconKey: String
     /// Project to start again from the card's "Craft again" button.
     var project: ProjectInfo
+    /// XP earned.
+    var xp: Int = 0
     /// Level reached, when this craft levelled the player up.
     var levelUp: Int? = nil
+    /// Weapons the level-up unlocked.
+    var unlocked: [String] = []
 }
 
 /// State of the crafting HUD. Sessions write it; SwiftUI renders it.

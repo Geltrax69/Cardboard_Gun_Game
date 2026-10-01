@@ -12,8 +12,18 @@ final class PlayerProfile: ObservableObject {
         var soundOn = true
         var hintsOn = true
         var seenGuide = false
-        /// Optional so saves from earlier versions still decode.
+        // Optional so saves from earlier versions still decode.
         var seenRotateTip: Bool?
+        var xp: Int?
+    }
+
+    /// What finishing a craft earned.
+    struct CompletionResult: Equatable {
+        var xp: Int
+        var levelBefore: Int
+        var levelAfter: Int
+        var firstTime: Bool
+        var leveledUp: Bool { levelAfter > levelBefore }
     }
 
     private static let key = "cardboardlab.save.v1"
@@ -46,6 +56,21 @@ final class PlayerProfile: ObservableObject {
     var hintsOn: Bool { data.hintsOn }
     var seenGuide: Bool { data.seenGuide }
     var seenRotateTip: Bool { data.seenRotateTip ?? false }
+    var xp: Int { data.xp ?? PlayerProfile.legacyXP(data) }
+    var level: Int { Progression.level(forXP: xp) }
+    var levelProgress: Float { Progression.levelProgress(xp: xp) }
+    var xpToNextLevel: Int { Progression.xpNeeded(forLevel: level + 1) - xp }
+
+    func isUnlocked(_ project: ProjectInfo) -> Bool { level >= project.level }
+
+    /// Saves from before levels existed: credit the weapons already crafted.
+    private static func legacyXP(_ d: SaveData) -> Int {
+        ProjectInfo.weapons.reduce(0) { sum, p in
+            let n = d.completed[p.id] ?? 0
+            guard n > 0 else { return sum }
+            return sum + p.xp(firstTime: true) + (n - 1) * p.xp(firstTime: false)
+        }
+    }
 
     func isUnlocked(_ stock: CardboardStock) -> Bool { data.unlockedStocks.contains(stock.id) }
     func progress(of project: String) -> Int { data.progress[project] ?? 0 }
@@ -73,11 +98,18 @@ final class PlayerProfile: ObservableObject {
         mutate { $0.progress[project] = max($0.progress[project] ?? 0, step) }
     }
 
-    func recordCompletion(_ project: String) {
+    @discardableResult
+    func recordCompletion(_ project: ProjectInfo) -> CompletionResult {
+        let first = timesCompleted(project.id) == 0
+        let gained = project.xp(firstTime: first)
+        let before = level
+        let total = xp + gained
         mutate {
-            $0.completed[project, default: 0] += 1
-            $0.progress[project] = 0
+            $0.completed[project.id, default: 0] += 1
+            $0.progress[project.id] = 0
+            $0.xp = total
         }
+        return CompletionResult(xp: gained, levelBefore: before, levelAfter: level, firstTime: first)
     }
 
     func setSound(_ on: Bool) { mutate { $0.soundOn = on } }

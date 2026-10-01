@@ -1,33 +1,69 @@
 import Foundation
 
-/// Craft projects shown on the menu. Add a new weapon/object here and give it a
-/// `WeaponDesign` (built by WeaponSession) to make it playable.
+/// Craft projects shown on the menu: the campaign weapons (unlocked by player level),
+/// Free Craft, and the guns that are still on the drawing board. A new knife, dagger,
+/// sword or axe only needs a `WeaponDesign` in `WeaponDesign.campaign`.
 struct ProjectInfo: Identifiable, Equatable {
     enum Kind: Equatable {
-        case playable
-        case locked(requirement: String)
+        /// A weapon built by `WeaponSession` from `design`.
+        case weapon
+        /// Opens the Free Craft designer.
+        case freeCraft
         case comingSoon
     }
 
     let id: String
     let name: String
-    let steps: Int
     let kind: Kind
-    let reward: Int
-    /// Project whose completion reveals this one (its blueprint may still be on the way).
-    var unlockedBy: String? = nil
-    /// Weapon built by this project.
     var design: WeaponDesign? = nil
+    /// Player level that unlocks it.
+    var level: Int = 1
+    /// CRAFT coins on completion.
+    var reward: Int = 0
+    /// One-line description for the card.
+    var blurb: String = ""
+    /// Position in the campaign (drives XP); nil for Free Craft builds.
+    var campaignIndex: Int? = nil
 
-    static let knife = ProjectInfo(id: "knife", name: "Knife", steps: WeaponDesign.knife.stepCount, kind: .playable, reward: 250,
-                                   design: .knife)
-    static let pistol = ProjectInfo(id: "pistol", name: "Pistol", steps: 8, kind: .locked(requirement: "Craft the knife to unlock"),
-                                    reward: 400, unlockedBy: "knife")
-    static let rifle = ProjectInfo(id: "rifle", name: "Rifle", steps: 10, kind: .locked(requirement: "Craft the pistol to unlock"),
-                                   reward: 600, unlockedBy: "pistol")
-    static let more = ProjectInfo(id: "more", name: "More Crafts", steps: 0, kind: .comingSoon, reward: 0)
+    var steps: Int { design?.stepCount ?? 0 }
 
-    static let all: [ProjectInfo] = [.knife, .pistol, .rifle, .more]
+    /// Icon key in `IconFactory`.
+    var iconKey: String {
+        switch kind {
+        case .weapon: return campaignIndex != nil ? "weapon.\(id)" : "weapon.custom"
+        case .freeCraft: return "project.free"
+        case .comingSoon: return "project.\(id)"
+        }
+    }
+
+    /// XP earned for finishing it.
+    func xp(firstTime: Bool) -> Int {
+        guard let i = campaignIndex else { return Progression.freeCraftXP }
+        return Progression.weaponXP(index: i, firstTime: firstTime)
+    }
+
+    static func weapon(_ d: WeaponDesign, index: Int) -> ProjectInfo {
+        ProjectInfo(id: d.id, name: d.name, kind: .weapon, design: d, level: Progression.unlockLevel(index: index),
+                    reward: 250 + 40 * index, blurb: d.summary, campaignIndex: index)
+    }
+
+    /// A Free Craft creation, ready to build.
+    static func freeBuild(_ d: WeaponDesign) -> ProjectInfo {
+        var design = d
+        design.id = "free"
+        return ProjectInfo(id: "free", name: design.name, kind: .weapon, design: design, reward: 120, blurb: design.summary)
+    }
+
+    static let weapons: [ProjectInfo] = WeaponDesign.campaign.enumerated().map { weapon($1, index: $0) }
+    static let knife = weapons[0]
+    static let freeCraft = ProjectInfo(id: "freeCraft", name: "Free Craft", kind: .freeCraft,
+                                       blurb: "Design your own blade, guard and grip")
+    static let pistol = ProjectInfo(id: "pistol", name: "Pistol", kind: .comingSoon, level: WeaponDesign.campaign.count + 1,
+                                    blurb: "Blueprint on the drawing board")
+    static let rifle = ProjectInfo(id: "rifle", name: "Rifle", kind: .comingSoon, level: WeaponDesign.campaign.count + 2,
+                                   blurb: "Blueprint on the drawing board")
+
+    static func byID(_ id: String) -> ProjectInfo? { weapons.first { $0.id == id } }
 }
 
 /// Tools on the menu shelf.
@@ -38,9 +74,9 @@ struct ToolInfo: Identifiable, Equatable {
 
     static let all: [ToolInfo] = [
         ToolInfo(id: "knife", name: "Craft Knife", tip: "Cuts cleanly along the solid red lines."),
-        ToolInfo(id: "scissors", name: "Scissors", tip: "Trims scraps and rough edges."),
+        ToolInfo(id: "folder", name: "Bone Folder", tip: "Scores crisp creases on the blue dashed lines."),
         ToolInfo(id: "glue", name: "Glue", tip: "Sticks tabs onto their matching surface."),
-        ToolInfo(id: "ruler", name: "Ruler", tip: "Scores straight creases on the blue dashed lines."),
+        ToolInfo(id: "sander", name: "Sanding Block", tip: "Sands edges into a sharp bevel and shapes the tip."),
         ToolInfo(id: "pencil", name: "Pencil", tip: "Traces templates onto a fresh sheet."),
         ToolInfo(id: "tape", name: "Tape", tip: "Wraps and reinforces handles."),
     ]

@@ -217,12 +217,26 @@ struct FinishCard: View {
                     .clipShape(RoundedRectangle(cornerRadius: 18 * s, style: .continuous))
             }
             VStack(alignment: .leading, spacing: 8 * s) {
+                if let level = info.levelUp {
+                    HStack(spacing: 8 * s) {
+                        Image(systemName: "star.fill").font(.system(size: 16 * s, weight: .black))
+                        Text("LEVEL UP! Level \(level)" + (info.unlocked.isEmpty ? "" : " · \(info.unlocked.joined(separator: ", ")) unlocked"))
+                            .font(LabFont.black(16 * s))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    .foregroundStyle(Color.labInk)
+                    .padding(.horizontal, 12 * s).padding(.vertical, 6 * s)
+                    .background(Capsule().fill(Color.labYellow))
+                    .overlay(Capsule().stroke(Color.labInk, lineWidth: 2))
+                }
                 OutlinedText(text: info.title, font: LabFont.black(34 * s), fill: .labMint, width: 2.5 * s, depth: 3 * s)
                 Text(info.subtitle)
                     .font(LabFont.semibold(15 * s))
                     .foregroundStyle(Color.labPaper.opacity(0.8))
                 HStack(spacing: 14 * s) {
                     stat(icon: nil, value: "+\(info.reward)", label: "CRAFT", s)
+                    stat(icon: "star.fill", value: "+\(info.xp)", label: "XP", s)
                     stat(icon: "timer", value: timeText, label: "time", s)
                     stat(icon: "checkmark.seal.fill", value: "\(info.perfectFolds)", label: "perfect folds", s)
                 }

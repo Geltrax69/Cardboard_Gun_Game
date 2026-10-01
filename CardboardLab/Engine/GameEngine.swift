@@ -344,6 +344,10 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
 
     /// First knife ever: show the guide before crafting.
     func openProject(_ project: ProjectInfo) {
+        guard profile.isUnlocked(project) else {
+            toast("Reach level \(project.level) to unlock the \(project.name)", .hint, life: 2.2)
+            return
+        }
         if project.id == ProjectInfo.knife.id && !profile.seenGuide {
             showGuide(startsCraft: true)
         } else {
@@ -365,7 +369,7 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
     /// Starts a craft project: the top sheet of the chosen stack slides to the middle of
     /// the mat and grows into a full sheet, then the session script takes over.
     func startProject(_ project: ProjectInfo) {
-        guard case .playable = project.kind, !transitioning else { return }
+        guard project.design != nil, !transitioning else { return }
         transitioning = true
         screen = .crafting
         sessionToken += 1

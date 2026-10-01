@@ -31,10 +31,10 @@ struct MenuView: View {
                 .padding(.horizontal, 24 * s)
                 .padding(.top, 20 * s)
 
-                // Right column: craft projects.
-                VStack(alignment: .leading, spacing: 12 * s) {
+                // Right column: level and weapons.
+                VStack(alignment: .leading, spacing: 10 * s) {
                     HStack {
-                        Text("Craft Projects")
+                        Text("Weapons")
                             .font(LabFont.heavy(24 * s))
                             .foregroundStyle(Color.labPaper)
                         Spacer()
@@ -51,10 +51,15 @@ struct MenuView: View {
                         }
                         .buttonStyle(PressableStyle())
                     }
-                    ForEach(ProjectInfo.all) { project in
-                        ProjectCard(project: project, scale: s)
+                    LevelBar(scale: s)
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 10 * s) {
+                            ForEach(menuProjects) { project in
+                                ProjectCard(project: project, scale: s)
+                            }
+                        }
+                        .padding(.bottom, 8 * s)
                     }
-                    Spacer(minLength: 0)
                 }
                 .padding(16 * s)
                 .frame(width: projectsWidth, height: geo.size.height - 124 * s, alignment: .top)
@@ -70,6 +75,11 @@ struct MenuView: View {
                               y: geo.size.height - 108 * s)
             }
         }
+    }
+
+    /// Campaign weapons in unlock order, then the guns still being designed.
+    private var menuProjects: [ProjectInfo] {
+        ProjectInfo.weapons + [.pistol, .rifle]
     }
 
     @ViewBuilder
@@ -124,6 +134,54 @@ struct MenuView: View {
     }
 }
 
+/// Player level, XP toward the next level and what it unlocks.
+private struct LevelBar: View {
+    @EnvironmentObject var profile: PlayerProfile
+    let scale: CGFloat
+
+    var body: some View {
+        let s = scale
+        let level = profile.level
+        let next = ProjectInfo.weapons.first { $0.level > level }
+        HStack(spacing: 10 * s) {
+            ZStack {
+                Circle().fill(Color.labYellow)
+                Circle().stroke(Color.labInk, lineWidth: 2.5)
+                Text("\(level)").font(LabFont.black(20 * s)).foregroundStyle(Color.labInk)
+            }
+            .frame(width: 42 * s, height: 42 * s)
+            VStack(alignment: .leading, spacing: 4 * s) {
+                HStack {
+                    Text("LEVEL \(level)").font(LabFont.heavy(15 * s)).foregroundStyle(Color.labPaper)
+                    Spacer()
+                    Text("\(profile.xpToNextLevel) XP to go")
+                        .font(LabFont.semibold(12 * s))
+                        .foregroundStyle(Color.labPaper.opacity(0.7))
+                }
+                GeometryReader { g in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.labTable)
+                        Capsule().fill(Color.labMint)
+                            .frame(width: max(10 * s, g.size.width * CGFloat(profile.levelProgress)))
+                    }
+                }
+                .frame(height: 12 * s)
+                .overlay(Capsule().stroke(Color.labInk, lineWidth: 1.5))
+                if let next {
+                    Text("Next unlock: \(next.name)")
+                        .font(LabFont.semibold(12 * s))
+                        .foregroundStyle(Color.labYellow)
+                }
+            }
+        }
+        .padding(10 * s)
+        .background(RoundedRectangle(cornerRadius: 16 * s, style: .continuous).fill(Color.labTable))
+        .overlay(RoundedRectangle(cornerRadius: 16 * s, style: .continuous).stroke(Color.labMat, lineWidth: 1.5))
+        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: profile.xp)
+    }
+}
+
+/// One row in the weapons list.
 private struct ProjectCard: View {
     @EnvironmentObject var engine: GameEngine
     @EnvironmentObject var profile: PlayerProfile
@@ -131,80 +189,97 @@ private struct ProjectCard: View {
     let project: ProjectInfo
     let scale: CGFloat
 
+    private var unlocked: Bool { project.kind != .comingSoon && profile.isUnlocked(project) }
+    private var crafted: Int { profile.timesCompleted(project.id) }
+    private var isNew: Bool { unlocked && project.kind == .weapon && crafted == 0 }
+
     var body: some View {
         let s = scale
-        let playable = project.kind == .playable
         Button {
             switch project.kind {
-            case .playable: engine.openProject(project)
-            case .locked(let requirement):
-                if let dep = project.unlockedBy, profile.timesCompleted(dep) > 0 {
-                    engine.toast("\(project.name) blueprint is coming soon!", .info, life: 2)
+            case .comingSoon:
+                engine.toast("\(project.name) blueprint is on the drawing board!", .info, life: 2)
+            case .weapon, .freeCraft:
+                if unlocked {
+                    engine.openProject(project)
                 } else {
-                    engine.toast(requirement, .hint, life: 2)
+                    engine.toast("Reach level \(project.level) to unlock the \(project.name)", .hint, life: 2.2)
                 }
-            case .comingSoon: engine.toast("More crafts are on the way!", .info)
             }
         } label: {
-            ZStack(alignment: .bottomLeading) {
-                RoundedRectangle(cornerRadius: 20 * s, style: .continuous)
-                    .fill(Color.labInk)
-                if let img = icons.image("project.\(project.id)") {
-                    Image(uiImage: img)
-                        .resizable()
-                        .interpolation(.high)
-                        .scaledToFit()
-                        .frame(width: 118 * s, height: 118 * s)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                        .padding(.trailing, 26 * s)
-                        .opacity(playable ? 1 : 0.55)
+            HStack(spacing: 10 * s) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14 * s, style: .continuous).fill(Color.labTable)
+                    if let img = icons.image(project.iconKey) {
+                        Image(uiImage: img)
+                            .resizable()
+                            .interpolation(.high)
+                            .scaledToFit()
+                            .opacity(unlocked ? 1 : 0.35)
+                    }
+                    if !unlocked {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 20 * s, weight: .bold))
+                            .foregroundStyle(Color.labPaper)
+                    }
                 }
-                VStack(alignment: .leading, spacing: 2 * s) {
-                    Text(project.name)
-                        .font(LabFont.heavy(24 * s))
-                        .foregroundStyle(Color.labPaper)
-                    Text(subtitle)
-                        .font(LabFont.semibold(15 * s))
-                        .foregroundStyle(Color.labPaper.opacity(0.75))
+                .frame(width: 78 * s, height: 78 * s)
+                .clipShape(RoundedRectangle(cornerRadius: 14 * s, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 3 * s) {
+                    HStack(spacing: 6 * s) {
+                        Text(project.name)
+                            .font(LabFont.heavy(19 * s))
+                            .foregroundStyle(Color.labPaper.opacity(unlocked ? 1 : 0.6))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                        if isNew {
+                            Text("NEW")
+                                .font(LabFont.black(11 * s))
+                                .foregroundStyle(Color.labInk)
+                                .padding(.horizontal, 6 * s).padding(.vertical, 2 * s)
+                                .background(Capsule().fill(Color.labYellow))
+                        }
+                    }
+                    Text(project.blurb)
+                        .font(LabFont.semibold(12 * s))
+                        .foregroundStyle(Color.labPaper.opacity(0.7))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                    Text(status)
+                        .font(LabFont.heavy(12 * s))
+                        .foregroundStyle(unlocked ? Color.labMint : Color.labYellow.opacity(0.85))
+                        .lineLimit(1)
                 }
-                .padding(14 * s)
-                trailingBadge(s)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                    .padding(12 * s)
+                Spacer(minLength: 0)
+                Image(systemName: unlocked ? "chevron.right" : "lock.fill")
+                    .font(.system(size: 16 * s, weight: .black))
+                    .foregroundStyle(Color.labPaper.opacity(unlocked ? 1 : 0.5))
             }
-            .frame(height: 128 * s)
-            .overlay(RoundedRectangle(cornerRadius: 20 * s, style: .continuous)
-                .stroke(playable ? Color.labYellow : Color.labMat, lineWidth: playable ? 3.5 : 2))
-            .shadow(color: playable ? Color.labYellow.opacity(0.45) : .clear, radius: 8 * s)
+            .padding(8 * s)
+            .background(RoundedRectangle(cornerRadius: 18 * s, style: .continuous).fill(Color.labInk))
+            .overlay(RoundedRectangle(cornerRadius: 18 * s, style: .continuous)
+                .stroke(borderColor, lineWidth: isNew ? 3 : 1.5))
+            .shadow(color: isNew ? Color.labYellow.opacity(0.4) : .clear, radius: 7 * s)
         }
         .buttonStyle(PressableStyle())
     }
 
-    private var subtitle: String {
-        switch project.kind {
-        case .playable:
-            let done = profile.timesCompleted(project.id)
-            return done > 0 ? "Crafted ×\(done) · \(project.steps) steps" : "Step \(max(1, profile.progress(of: project.id))) / \(project.steps)"
-        case .locked:
-            if let dep = project.unlockedBy, profile.timesCompleted(dep) > 0 { return "Blueprint coming soon" }
-            return "Step 0 / \(project.steps)"
-        case .comingSoon: return "Coming Soon"
-        }
+    private var borderColor: Color {
+        if project.kind == .freeCraft { return .labBlue }
+        if isNew { return .labYellow }
+        return .labMat
     }
 
-    @ViewBuilder
-    private func trailingBadge(_ s: CGFloat) -> some View {
+    private var status: String {
         switch project.kind {
-        case .playable:
-            Image(systemName: "chevron.right")
-                .font(.system(size: 22 * s, weight: .black))
-                .foregroundStyle(Color.labPaper)
-        case .locked, .comingSoon:
-            Image(systemName: "lock.fill")
-                .font(.system(size: 22 * s, weight: .bold))
-                .foregroundStyle(Color.labPaper)
-                .padding(8 * s)
-                .background(Circle().fill(Color.labMat))
+        case .comingSoon: return "Coming soon"
+        case .freeCraft: return "Unlocks parts as you level up"
+        case .weapon:
+            guard unlocked else { return "Reach level \(project.level)" }
+            if crafted > 0 { return "Crafted ×\(crafted) · \(project.steps) steps" }
+            let step = profile.progress(of: project.id)
+            return step > 0 ? "Step \(step) / \(project.steps)" : "\(project.steps) steps · +\(project.xp(firstTime: true)) XP"
         }
     }
 }

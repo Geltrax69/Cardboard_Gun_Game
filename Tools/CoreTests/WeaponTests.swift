@@ -157,6 +157,18 @@ func runWeaponTests(outDir: String) {
         }
     }
     print("weapons: \(designs.count) designs checked, largest sheet \(worstSheet)")
+
+    // Levels: each first-time campaign craft reaches exactly the level that unlocks the next weapon.
+    var xp = 0
+    check(Progression.level(forXP: 0) == 1, "start at level 1")
+    for (i, d) in WeaponDesign.campaign.enumerated() {
+        check(d.unlockLevel <= Progression.level(forXP: xp), "\(d.id) unlocked in time")
+        xp += Progression.weaponXP(index: i, firstTime: true)
+        check(Progression.level(forXP: xp) == i + 2, "after \(d.id): level \(Progression.level(forXP: xp))")
+        check(!d.summary.isEmpty, "\(d.id) summary")
+    }
+    check(Progression.levelProgress(xp: 100) == 0 && Progression.levelProgress(xp: 175) == 0.5, "level progress")
+    check(Set(WeaponDesign.campaign.map { $0.id }).count == WeaponDesign.campaign.count, "unique weapon ids")
 }
 
 func minEdgeDist(_ poly: [V2], _ p: V2) -> Float {
