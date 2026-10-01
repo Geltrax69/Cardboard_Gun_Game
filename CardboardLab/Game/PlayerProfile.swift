@@ -15,6 +15,8 @@ final class PlayerProfile: ObservableObject {
         // Optional so saves from earlier versions still decode.
         var seenRotateTip: Bool?
         var xp: Int?
+        /// Last Free Craft design.
+        var freeDesign: WeaponDesign?
     }
 
     /// What finishing a craft earned.
@@ -57,6 +59,7 @@ final class PlayerProfile: ObservableObject {
     var seenGuide: Bool { data.seenGuide }
     var seenRotateTip: Bool { data.seenRotateTip ?? false }
     var xp: Int { data.xp ?? PlayerProfile.legacyXP(data) }
+    var freeDesign: WeaponDesign? { data.freeDesign }
     var level: Int { Progression.level(forXP: xp) }
     var levelProgress: Float { Progression.levelProgress(xp: xp) }
     var xpToNextLevel: Int { Progression.xpNeeded(forLevel: level + 1) - xp }
@@ -116,6 +119,7 @@ final class PlayerProfile: ObservableObject {
     func setHints(_ on: Bool) { mutate { $0.hintsOn = on } }
     func markGuideSeen() { mutate { $0.seenGuide = true } }
     func markRotateTipSeen() { mutate { $0.seenRotateTip = true } }
+    func saveFreeDesign(_ d: WeaponDesign) { mutate { $0.freeDesign = d } }
 
     func reset() {
         mutate { $0 = SaveData() }

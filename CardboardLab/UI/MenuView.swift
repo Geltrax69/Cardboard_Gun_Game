@@ -79,7 +79,7 @@ struct MenuView: View {
 
     /// Campaign weapons in unlock order, then the guns still being designed.
     private var menuProjects: [ProjectInfo] {
-        ProjectInfo.weapons + [.pistol, .rifle]
+        [.freeCraft] + ProjectInfo.weapons + [.pistol, .rifle]
     }
 
     @ViewBuilder

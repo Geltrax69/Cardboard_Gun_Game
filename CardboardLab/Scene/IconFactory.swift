@@ -44,6 +44,7 @@ final class IconFactory: ObservableObject {
         out["project.pistol"] = snap(turned(Props.pistolModel(), yaw: 0.25), target: V3(0.3, 1.2, 0), distance: 14, polar: 1.05)
         out["project.rifle"] = snap(turned(Props.rifleModel(), yaw: 0.22), target: V3(-0.5, 1.4, 0), distance: 23, polar: 1.05)
         out["project.more"] = snap(turned(Props.crateModel(), yaw: 0.6), target: V3(0, 1.1, 0), distance: 11, polar: 0.9)
+        out["project.free"] = snap(freeCraftModel(stock: stock), target: V3(0, 0.4, 0), distance: 15, polar: 0.8)
         images = out
         renderWeapons(stock: stock)
     }
@@ -62,6 +63,32 @@ final class IconFactory: ObservableObject {
                 self.images["weapon.\(design.id)"] = self.weaponSnap(design, stock: stock)
             }
         }
+    }
+
+    /// Free Craft card: a sheet with a blade blank pencilled on it, pencil and ruler.
+    private func freeCraftModel(stock: CardboardStock) -> SCNNode {
+        let root = SCNNode()
+        let t = stock.thickness
+        let outline = Poly.rect(-3.4, -2.4, 3.4, 2.4)
+        let sheet = SceneBridge.node(MeshBuilder.cardboard(outline: outline, thickness: t,
+                                                           inkEdges: (0..<4).map { (outline[$0], outline[($0 + 1) % 4]) }, inkWidth: 0.06),
+                                     CardboardMaterials(stock: stock).array)
+        root.addChildNode(sheet)
+        // A flame-dagger outline drawn in red, with its blue spine.
+        let blade = BladeSpec(build: .ridge, tip: .flame, length: 4.2, width: 1.5, tangLength: 1.6)
+        let upper = BladeShapes.ridgeUpper(blade, tangHalf: 0.35)
+        let ring = upper + upper.reversed().map { V2($0.x, -$0.y) }
+        var lines = MeshData()
+        MeshBuilder.ribbon((ring + [ring[0]]).map { V3($0.x + 1.2, t + 0.01, $0.y - 0.4) }, width: 0.09, into: &lines)
+        root.addChildNode(SceneBridge.node(lines, [Mat.unlit(Palette.red)]))
+        var dash = MeshData()
+        MeshBuilder.dashes(V3(-3.0, t + 0.012, -0.4), V3(2.8, t + 0.012, -0.4), into: &dash)
+        root.addChildNode(SceneBridge.node(dash, [Mat.unlit(Palette.blue)]))
+        let pencil = Props.pencil()
+        pencil.setPose(Pose(rot: Quat(axis: V3(0, 1, 0), angle: 0.5) * Quat(axis: V3(0, 0, 1), angle: 0.25), pos: V3(-1.2, t + 0.25, 1.5)))
+        root.addChildNode(pencil)
+        root.eulerAngles.y = 0.3
+        return root
     }
 
     /// Icon key for a weapon, rendering it now if needed (Free Craft designs).

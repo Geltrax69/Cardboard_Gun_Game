@@ -60,6 +60,24 @@ Crafting a weapon for the first time earns exactly the XP needed for the next le
 The finish card shows **LEVEL UP!** and what it unlocked; new weapons wear a **NEW**
 badge on the menu.
 
+### Free Craft
+
+**Free Craft** (top of the Weapons list) is a designer for your own weapons. The weapon
+spins on a turntable above the mat (drag to spin it, pinch to zoom) and updates live as
+you pick parts:
+
+- **Type**: knife, dagger, sword or axe
+- **Blade**: double edge (ridge) or single edge (laminated), tip shape, plain or
+  serrated edge, length, width, curve, fuller groove
+- **Guard** and **pommel**, or an **axe head**, with sizes
+- **Handle / shaft** length, grip bands, lanyard hole
+
+Every part unlocks at the level of the first campaign weapon that uses it (flame tips at
+level 7 with the Flame Dagger, axes at level 6, …; `Core/FreeCraft.swift`), so the
+designer grows as you level up. **Surprise me** rolls a random design from your unlocked
+parts. **Craft it!** builds it with the normal six-stage session for 60 XP, and the last
+design is remembered.
+
 ### A weapon, step by step
 
 Every weapon goes through the same stages; ones a design doesn't need are skipped, so

@@ -21,6 +21,11 @@ struct RootView: View {
                         .transition(.opacity)
                 }
 
+                if engine.screen == .designer {
+                    FreeCraftView(scale: s)
+                        .transition(.opacity)
+                }
+
                 ToastLayer(scale: s, defaultY: geo.size.height * 0.34)
 
                 if engine.guideVisible {
