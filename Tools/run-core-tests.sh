@@ -6,5 +6,5 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${1:-$ROOT/.build/core-tests}"
 mkdir -p "$OUT"
-swiftc -O -o "$OUT/core-tests" "$ROOT"/CardboardLab/Core/*.swift "$ROOT/Tools/CoreTests/main.swift"
+swiftc -O -o "$OUT/core-tests" "$ROOT"/CardboardLab/Core/*.swift "$ROOT"/Tools/CoreTests/*.swift
 "$OUT/core-tests" "$OUT"

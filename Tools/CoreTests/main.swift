@@ -320,6 +320,8 @@ do {
     exportScene("guard_half", pieceMeshes(bp.guardBand, rig: gHalf, pose: .identity))
 }
 
+runWeaponTests(outDir: CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : ".")
+
 if failures == 0 {
     print("All core tests passed")
 } else {

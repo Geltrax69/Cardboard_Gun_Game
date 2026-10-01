@@ -140,8 +140,9 @@ public struct PieceDef {
 
     // MARK: Union outline
 
+    /// Integer grid key (mirrored geometry produces −0.0, which must match 0.0).
     static func key(_ p: V2) -> String {
-        String(format: "%.3f,%.3f", Double((p.x * 1000).rounded() / 1000), Double((p.y * 1000).rounded() / 1000))
+        "\(Int((p.x * 1000).rounded())),\(Int((p.y * 1000).rounded()))"
     }
 
     static func unionOutline(_ panels: [PanelDef]) -> [V2] {
