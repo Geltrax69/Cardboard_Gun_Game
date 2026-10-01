@@ -477,7 +477,7 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
     /// Starts a craft project: the top sheet of the chosen stack slides to the middle of
     /// the mat and grows into a full sheet, then the session script takes over.
     func startProject(_ project: ProjectInfo) {
-        guard project.design != nil, !transitioning else { return }
+        guard project.design != nil || project.gun != nil, !transitioning else { return }
         transitioning = true
         screen = .crafting
         sessionToken += 1
@@ -497,7 +497,8 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
 
     private func introSheet(project: ProjectInfo, stock: CardboardStock) async throws {
         clearCraft()
-        let size = project.design.map { WeaponBlueprint(design: $0, thickness: stock.thickness).template.sheetSize } ?? V2(15, 10)
+        let size = project.design.map { WeaponBlueprint(design: $0, thickness: stock.thickness).template.sheetSize }
+            ?? project.gun.map { GunBlueprint(kind: $0, thickness: stock.thickness).template.sheetSize } ?? V2(15, 10)
         let from = menu.topSheetWorldPose(stock.id)
         menu.hideTopSheet(stock.id, true)
         let sheet = makeBlankSheet(stock: stock, size: size)
@@ -524,8 +525,14 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
 
     /// Runs the project's crafting script, then returns to the menu.
     private func runSession(project: ProjectInfo, stock: CardboardStock) async throws {
-        guard let design = project.design else { return }
-        let s = WeaponSession(engine: self, project: project, design: design, stock: stock)
+        let s: CraftSession
+        if let design = project.design {
+            s = WeaponSession(engine: self, project: project, design: design, stock: stock)
+        } else if let gun = project.gun {
+            s = GunSession(engine: self, project: project, kind: gun, stock: stock)
+        } else {
+            return
+        }
         session = s
         try await s.run()
         s.cleanup()

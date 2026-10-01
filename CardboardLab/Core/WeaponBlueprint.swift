@@ -127,22 +127,7 @@ public struct WeaponBlueprint {
     // MARK: Handle
 
     static func handlePanels(W: Float, H: Float, L: Float, t: Float, lanyard: Bool) -> [PanelDef] {
-        let g: Float = 0.45
-        let H2 = H - t
-        let lanyardU = L - 0.62
-        let hbHoles = lanyard ? [Poly.circle(center: V2(lanyardU, 0), radius: 0.2, sides: 8, phase: .pi / 8)] : []
-        let htHoles = lanyard ? [Poly.circle(center: V2(lanyardU, -W - H), radius: 0.2, sides: 8, phase: .pi / 8)] : []
-        return [
-            PanelDef("HB", Poly.rect(0, -W / 2, L, W / 2), holes: hbHoles),
-            PanelDef("HS1", Poly.rect(0, -W / 2 - H, L, -W / 2), parent: "HB", hinge: HingeDef(V2(0, -W / 2), V2(L, -W / 2))),
-            PanelDef("HT", Poly.rect(0, -W / 2 - H - (W + t), L + t, -W / 2 - H), holes: htHoles,
-                     parent: "HS1", hinge: HingeDef(V2(0, -W / 2 - H), V2(L, -W / 2 - H))),
-            PanelDef("HS2", Poly.rect(0, W / 2, L, W / 2 + H2), parent: "HB", hinge: HingeDef(V2(0, W / 2), V2(L, W / 2))),
-            PanelDef("GT", [V2(0.12, W / 2 + H2), V2(L - 0.12, W / 2 + H2), V2(L - 0.42, W / 2 + H2 + g), V2(0.42, W / 2 + H2 + g)],
-                     parent: "HS2", hinge: HingeDef(V2(0.12, W / 2 + H2), V2(L - 0.12, W / 2 + H2)), role: .glueTab),
-            PanelDef("EC", [V2(L, -W / 2), V2(L + H, -W / 2 + 0.1), V2(L + H, W / 2 - 0.1), V2(L, W / 2)],
-                     parent: "HB", hinge: HingeDef(V2(L, -W / 2), V2(L, W / 2))),
-        ]
+        BoxNet.box(W: W, H: H, L: L, t: t, caps: BoxNet.Caps(lanyard: lanyard))
     }
 
     // MARK: Blades
@@ -402,10 +387,7 @@ public struct WeaponBlueprint {
 
     // MARK: Glue
 
-    public var handleGlue: SurfacePath {
-        let v = W / 2 + (H - t) + tab * 0.45
-        return SurfacePath(piece: "handle", panel: "GT", points: [V3(0.55, -0.012, v), V3(L - 0.55, -0.012, v)], normal: V3(0, -1, 0))
-    }
+    public var handleGlue: SurfacePath { BoxNet.tabGlue(piece: "handle", W: W, H: H, L: L, t: t) }
 
     /// Ridge blades: glue on the tang before it slides into the handle.
     /// Laminated blades: glue down the middle of the first layer before folding the twin over.

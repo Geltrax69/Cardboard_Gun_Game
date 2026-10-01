@@ -15,6 +15,7 @@ final class Workspace {
     let pencil = Props.pencil()
     let boneFolder = Props.boneFolder()
     let sander = Props.sandingBlock()
+    let marker = Props.marker()
     private(set) var scraps: [SCNNode] = []
 
     /// Resting transforms of the tools that get picked up during crafting.
@@ -23,6 +24,7 @@ final class Workspace {
     let folderRest = Pose(rot: Quat(axis: V3(0, 1, 0), angle: -0.35), pos: V3(-12.4, 0.02, 5.6))
     let glueRest = Pose(rot: Quat(axis: V3(1, 0, 0), angle: .pi / 2), pos: V3(11.5, 0.65, 0.4))
     let sanderRest = Pose(rot: Quat(axis: V3(0, 1, 0), angle: 1.15), pos: V3(12.3, 0, -3.4))
+    let markerRest = Pose(rot: Quat(axis: V3(0, 1, 0), angle: -0.5), pos: V3(-12.6, 0.27, -2.6))
 
     init() {
         root.name = "workspace"
@@ -63,7 +65,7 @@ final class Workspace {
     /// Puts every hand tool back in its resting spot (after a craft is abandoned).
     @MainActor
     func returnTools(tweener: Tweener) {
-        for (node, rest) in [(knife, knifeRest), (glue, glueRest), (boneFolder, folderRest), (pencil, pencilRest), (sander, sanderRest)] {
+        for (node, rest) in [(knife, knifeRest), (glue, glueRest), (boneFolder, folderRest), (pencil, pencilRest), (sander, sanderRest), (marker, markerRest)] {
             let from = node.pose
             if from.pos.dist(rest.pos) < 0.01 { continue }
             tweener.start(0.6, ease: .inOutCubic) { k in node.setPose(from.lerp(rest, k)) }
@@ -108,6 +110,9 @@ final class Workspace {
 
         sander.setPose(sanderRest)
         root.addChildNode(sander)
+
+        marker.setPose(markerRest)
+        root.addChildNode(marker)
 
         let stackA = Props.cardboardStack(width: 7, depth: 5.5, sheets: 3, stock: .plain, seed: 1)
         stackA.setPose(Pose(rot: Quat(axis: V3(0, 1, 0), angle: 0.25), pos: V3(-16.5, -matThickness, 8.8)))

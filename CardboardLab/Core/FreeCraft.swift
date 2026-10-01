@@ -8,7 +8,7 @@ public enum FreeCraftParts {
 
     /// Level of the first campaign weapon matching `test`, or `fallback`.
     static func firstLevel(_ fallback: Int, _ test: (WeaponDesign) -> Bool) -> Int {
-        WeaponDesign.campaign.firstIndex(where: test).map { Progression.unlockLevel(index: $0) } ?? fallback
+        WeaponDesign.campaign.first(where: test).flatMap { Campaign.level(of: $0.id) } ?? fallback
     }
 
     public static func level(of kind: WeaponKind) -> Int {

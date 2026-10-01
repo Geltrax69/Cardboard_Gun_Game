@@ -218,3 +218,40 @@ enum WeaponModel {
         return max(b.max.x - b.min.x, b.max.z - b.min.z)
     }
 }
+
+/// Builds the finished pistol or rifle for icons and the finale.
+@MainActor
+enum GunModel {
+    /// The assembled gun centred on the origin, barrel along −x, details drawn on.
+    static func assembled(_ kind: GunKind, stock: CardboardStock) -> SCNNode {
+        let bp = GunBlueprint(kind: kind, thickness: stock.thickness)
+        let root = SCNNode()
+        root.name = "gun-\(kind.rawValue)"
+        let assembly = SCNNode()
+        var nodes: [String: PieceNode] = [:]
+        for def in bp.template.pieces {
+            let piece = PieceNode(def: def, stock: stock, showFoldLines: false)
+            piece.setAngles(bp.finishedAngles(def.id))
+            for p in def.panels where p.hinge != nil { piece.setCrease(p.id, 1) }
+            piece.pose = bp.assembledPose(def.id)
+            assembly.addChildNode(piece.root)
+            nodes[def.id] = piece
+        }
+        for detail in bp.details {
+            let surface = detail.path
+            guard let node = nodes[surface.piece]?.panelNodes[surface.panel] else { continue }
+            let ink = BevelNode(surface: surface, inner: surface.points, toWorld: .identity, style: .ink)
+            ink.setProgress(ink.path.length)
+            ink.setActive(false, time: 0)
+            node.addChildNode(ink.root)
+        }
+        assembly.setPose(.translation(bp.assembledCentre * -1))
+        root.addChildNode(assembly)
+        return root
+    }
+
+    static func span(_ kind: GunKind, stock: CardboardStock) -> Float {
+        let b = GunBlueprint(kind: kind, thickness: stock.thickness).assembledBounds()
+        return max(b.max.x - b.min.x, b.max.y - b.min.y)
+    }
+}

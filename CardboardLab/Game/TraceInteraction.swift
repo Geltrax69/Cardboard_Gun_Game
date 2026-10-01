@@ -162,6 +162,23 @@ final class TraceInteraction {
                                 hintText: "Rub the block along the yellow guide")
     }
 
+    /// Marker drawing on a face with outward `normal`: felt tip on the line, body leaning
+    /// back along the stroke and out of the surface.
+    static func draw(session: CraftSession, line: BevelNode, marker: SCNNode, normal: V3, showHint: Bool) -> TraceInteraction {
+        let engine = session.engine
+        let n = normal.unit
+        let tool = TraceTool(node: marker, pose: { tip, tangent in
+            var back = (tangent - n * tangent.dotp(n)) * -1
+            back = back.len > 1e-4 ? back.unit : V3(1, 0, 0)
+            let axis = (n * 0.82 + back * 0.45 + V3(0, 0.2, 0)).unit
+            return Pose(rot: Quat.between(V3(1, 0, 0), axis), pos: tip + n * 0.01)
+        }, onAdvance: { _, _, _ in
+            engine.sound.play(.score, volume: 0.45, minInterval: 0.1)
+        })
+        return TraceInteraction(session: session, visual: line, tool: tool, showHint: showHint,
+                                hintText: "Draw along the yellow dots")
+    }
+
     /// Craft knife carving a groove (fuller) into the face of the blade.
     static func carve(session: CraftSession, groove: BevelNode, knife: SCNNode, showHint: Bool) -> TraceInteraction {
         let engine = session.engine

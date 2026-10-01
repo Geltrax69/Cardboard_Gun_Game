@@ -41,9 +41,12 @@ final class IconFactory: ObservableObject {
 
         out["project.knife"] = weaponSnap(.knife, stock: stock)
         out["weapon.knife"] = out["project.knife"]
-        out["project.pistol"] = snap(turned(Props.pistolModel(), yaw: 0.25), target: V3(0.3, 1.2, 0), distance: 14, polar: 1.05)
-        out["project.rifle"] = snap(turned(Props.rifleModel(), yaw: 0.22), target: V3(-0.5, 1.4, 0), distance: 23, polar: 1.05)
-        out["project.more"] = snap(turned(Props.crateModel(), yaw: 0.6), target: V3(0, 1.1, 0), distance: 11, polar: 0.9)
+        out["tool.marker"] = snap(turned(Props.marker(), yaw: 0.6), target: V3(1.6, 0, -1.0), distance: 8.5, polar: 0.62)
+        for kind in GunKind.allCases {
+            let span = GunModel.span(kind, stock: stock)
+            out["gun.\(kind.rawValue)"] = snap(turned(GunModel.assembled(kind, stock: stock), yaw: 0.3), target: V3(0, 0, 0),
+                                               distance: span * 1.55 + 2, polar: 1.0)
+        }
         out["project.free"] = snap(freeCraftModel(stock: stock), target: V3(0, 0.4, 0), distance: 15, polar: 0.8)
         images = out
         renderWeapons(stock: stock)

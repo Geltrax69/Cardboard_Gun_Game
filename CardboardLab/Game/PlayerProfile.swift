@@ -68,7 +68,7 @@ final class PlayerProfile: ObservableObject {
 
     /// Saves from before levels existed: credit the weapons already crafted.
     private static func legacyXP(_ d: SaveData) -> Int {
-        ProjectInfo.weapons.reduce(0) { sum, p in
+        ProjectInfo.campaign.reduce(0) { sum, p in
             let n = d.completed[p.id] ?? 0
             guard n > 0 else { return sum }
             return sum + p.xp(firstTime: true) + (n - 1) * p.xp(firstTime: false)
@@ -120,6 +120,12 @@ final class PlayerProfile: ObservableObject {
     func markGuideSeen() { mutate { $0.seenGuide = true } }
     func markRotateTipSeen() { mutate { $0.seenRotateTip = true } }
     func saveFreeDesign(_ d: WeaponDesign) { mutate { $0.freeDesign = d } }
+
+    /// Testing aid: enough XP to unlock every project and Free Craft part.
+    func unlockAll() {
+        let target = Campaign.allUnlockedXP
+        mutate { $0.xp = max($0.xp ?? 0, target) }
+    }
 
     func reset() {
         mutate { $0 = SaveData() }

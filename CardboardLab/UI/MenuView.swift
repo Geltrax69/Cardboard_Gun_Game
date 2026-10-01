@@ -79,7 +79,7 @@ struct MenuView: View {
 
     /// Campaign weapons in unlock order, then the guns still being designed.
     private var menuProjects: [ProjectInfo] {
-        [.freeCraft] + ProjectInfo.weapons + [.pistol, .rifle]
+        [.freeCraft] + ProjectInfo.campaign
     }
 
     @ViewBuilder
@@ -142,7 +142,7 @@ private struct LevelBar: View {
     var body: some View {
         let s = scale
         let level = profile.level
-        let next = ProjectInfo.weapons.first { $0.level > level }
+        let next = ProjectInfo.campaign.first { $0.level > level }
         HStack(spacing: 10 * s) {
             ZStack {
                 Circle().fill(Color.labYellow)
@@ -191,7 +191,7 @@ private struct ProjectCard: View {
 
     private var unlocked: Bool { project.kind != .comingSoon && profile.isUnlocked(project) }
     private var crafted: Int { profile.timesCompleted(project.id) }
-    private var isNew: Bool { unlocked && project.kind == .weapon && crafted == 0 }
+    private var isNew: Bool { unlocked && (project.kind == .weapon || project.kind == .gun) && crafted == 0 }
 
     var body: some View {
         let s = scale
@@ -199,7 +199,7 @@ private struct ProjectCard: View {
             switch project.kind {
             case .comingSoon:
                 engine.toast("\(project.name) blueprint is on the drawing board!", .info, life: 2)
-            case .weapon, .freeCraft:
+            case .weapon, .gun, .freeCraft:
                 if unlocked {
                     engine.openProject(project)
                 } else {
@@ -275,7 +275,7 @@ private struct ProjectCard: View {
         switch project.kind {
         case .comingSoon: return "Coming soon"
         case .freeCraft: return "Unlocks parts as you level up"
-        case .weapon:
+        case .weapon, .gun:
             guard unlocked else { return "Reach level \(project.level)" }
             if crafted > 0 { return "Crafted ×\(crafted) · \(project.steps) steps" }
             let step = profile.progress(of: project.id)
@@ -375,6 +375,14 @@ struct SettingsPanel: View {
                     Label("How to build the knife", systemImage: "book.fill")
                 }
                 .buttonStyle(SettingsButtonStyle(fill: .labBlue))
+                Button {
+                    profile.unlockAll()
+                    engine.toast("Everything unlocked — have fun testing!", .success, life: 2)
+                    isPresented = false
+                } label: {
+                    Label("Unlock all projects", systemImage: "lock.open.fill")
+                }
+                .buttonStyle(SettingsButtonStyle(fill: .labYellow))
                 Button {
                     if confirmReset {
                         profile.reset()

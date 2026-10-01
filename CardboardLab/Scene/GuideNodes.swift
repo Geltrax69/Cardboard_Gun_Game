@@ -128,7 +128,7 @@ final class GlueBeadNode: TraceVisual {
 /// space for tracing.
 @MainActor
 final class BevelNode: TraceVisual {
-    enum Style { case bevel, groove }
+    enum Style { case bevel, groove, ink }
 
     private(set) var path: Polyline
     let root = SCNNode()
@@ -145,6 +145,7 @@ final class BevelNode: TraceVisual {
     private static let grooveMat = Mat.lambert(Palette.cardboardDark)
     private static let guideMat = Mat.unlit(Palette.yellow)
     private static let grooveGuideMat = Mat.unlit(Palette.red)
+    private static let inkMat = Mat.unlit(Palette.ink)
 
     /// - Parameters:
     ///   - surface: the edge in the panel's flat frame
@@ -174,6 +175,7 @@ final class BevelNode: TraceVisual {
         switch style {
         case .bevel: buildBevel(upTo: ld)
         case .groove: buildGroove(upTo: ld)
+        case .ink: buildInk(upTo: ld)
         }
         buildGuide(from: ld)
     }
@@ -213,6 +215,14 @@ final class BevelNode: TraceVisual {
         band.geometry = SceneBridge.geometry(m, materials: [BevelNode.grooveMat])
     }
 
+    /// Marker line drawn on the outside of a part.
+    private func buildInk(upTo ld: Float) {
+        guard ld > 0.01 else { band.geometry = nil; return }
+        var m = MeshData()
+        MeshBuilder.ribbon(local.slice(0, ld).map { $0 + normal * 0.004 }, width: 0.08, normal: normal, into: &m)
+        band.geometry = SceneBridge.geometry(m, materials: [BevelNode.inkMat])
+    }
+
     /// Dotted guide over the stretch still to do, just inside the edge.
     private func buildGuide(from ld: Float) {
         var m = MeshData()
@@ -223,7 +233,7 @@ final class BevelNode: TraceVisual {
             MeshBuilder.ribbon([p - t * 0.06, p + t * 0.06], width: 0.1, normal: normal, into: &m, extend: false)
             s += 0.26
         }
-        guide.geometry = m.isEmpty ? nil : SceneBridge.geometry(m, materials: [style == .bevel ? BevelNode.guideMat : BevelNode.grooveGuideMat])
+        guide.geometry = m.isEmpty ? nil : SceneBridge.geometry(m, materials: [style == .groove ? BevelNode.grooveGuideMat : BevelNode.guideMat])
     }
 
     private func guidePoint(at s: Float) -> V3 {

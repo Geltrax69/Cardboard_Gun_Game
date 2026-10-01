@@ -3,7 +3,7 @@ import Foundation
 
 /// Tool shown in the bottom-left chip during crafting.
 enum HUDTool: String {
-    case knife, scorer, hand, glue, sander, none
+    case knife, scorer, hand, glue, sander, marker, none
 
     var title: String {
         switch self {
@@ -12,6 +12,7 @@ enum HUDTool: String {
         case .hand: return "Hands"
         case .glue: return "Glue"
         case .sander: return "Sanding Block"
+        case .marker: return "Marker"
         case .none: return ""
         }
     }
@@ -22,6 +23,7 @@ enum HUDTool: String {
         case .glue: return "tool.glue"
         case .scorer: return "tool.folder"
         case .sander: return "tool.sander"
+        case .marker: return "tool.marker"
         case .hand, .none: return nil
         }
     }
@@ -32,6 +34,7 @@ enum HUDTool: String {
         case .scorer: return "ruler.fill"
         case .glue: return "drop.fill"
         case .sander: return "sparkles"
+        case .marker: return "pencil.tip"
         default: return "scissors"
         }
     }

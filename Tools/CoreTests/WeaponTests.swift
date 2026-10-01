@@ -61,7 +61,7 @@ func runWeaponTests(outDir: String) {
             checkUnlocked(FreeCraftParts.clamp(c, level: level), level, "clamp \(c.id) L\(level)")
         }
     }
-    check(FreeCraftParts.level(of: .flame) == 7 && FreeCraftParts.level(of: .axe) == 6 && FreeCraftParts.level(of: .laminate) == 4,
+    check(FreeCraftParts.level(of: .flame) == 9 && FreeCraftParts.level(of: .axe) == 8 && FreeCraftParts.level(of: .laminate) == 6,
           "unlock levels follow the campaign")
 
     var worstSheet = V2(0, 0)
@@ -186,15 +186,16 @@ func runWeaponTests(outDir: String) {
     }
     print("weapons: \(designs.count) designs checked, largest sheet \(worstSheet)")
 
-    // Levels: each first-time campaign craft reaches exactly the level that unlocks the next weapon.
+    // Levels: each first-time campaign craft reaches exactly the level that unlocks the next project.
     var xp = 0
     check(Progression.level(forXP: 0) == 1, "start at level 1")
-    for (i, d) in WeaponDesign.campaign.enumerated() {
-        check(d.unlockLevel <= Progression.level(forXP: xp), "\(d.id) unlocked in time")
+    for (i, id) in Campaign.order.enumerated() {
+        check(Campaign.level(of: id)! <= Progression.level(forXP: xp), "\(id) unlocked in time")
         xp += Progression.weaponXP(index: i, firstTime: true)
-        check(Progression.level(forXP: xp) == i + 2, "after \(d.id): level \(Progression.level(forXP: xp))")
-        check(!d.summary.isEmpty, "\(d.id) summary")
+        check(Progression.level(forXP: xp) == i + 2, "after \(id): level \(Progression.level(forXP: xp))")
     }
+    for d in WeaponDesign.campaign { check(!d.summary.isEmpty && d.unlockLevel > 0, "\(d.id) summary") }
+    check(Progression.level(forXP: Campaign.allUnlockedXP) >= Campaign.order.count, "unlock-all XP")
     check(Progression.levelProgress(xp: 100) == 0 && Progression.levelProgress(xp: 175) == 0.5, "level progress")
     check(Set(WeaponDesign.campaign.map { $0.id }).count == WeaponDesign.campaign.count, "unique weapon ids")
 }

@@ -8,6 +8,8 @@ import UIKit
 final class CameraRig {
     enum Shot {
         case topDown, threeQuarter, hero, menu
+        /// Low, from the player's side: for drawing on the +z faces of a held build.
+        case side
 
         var polar: Float {
             switch self {
@@ -15,6 +17,7 @@ final class CameraRig {
             case .threeQuarter: return 0.78
             case .hero: return 0.62
             case .menu: return 0.52
+            case .side: return 1.05
             }
         }
 
@@ -24,6 +27,7 @@ final class CameraRig {
             case .threeQuarter: return -0.32
             case .hero: return 0.42
             case .menu: return 0
+            case .side: return -0.12
             }
         }
     }

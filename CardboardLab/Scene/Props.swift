@@ -83,6 +83,25 @@ enum Props {
         return root
     }
 
+    // MARK: Marker — draws details. Origin at the felt tip, body along +x.
+
+    static func marker() -> SCNNode {
+        let root = SCNNode()
+        root.name = "marker"
+        let tip = MeshBuilder.frustum(sides: 6, bottom: 0.03, top: 0.11, height: 0.32, phase: .pi / 6)
+            .transformed(Pose(rot: Quat(axis: V3(0, 0, 1), angle: -.pi / 2)))
+        root.addChildNode(part(tip, Palette.ink, outline: 0.015))
+        root.addChildNode(part(MeshBuilder.prism(sides: 6, radius: 0.24, height: 0.5, phase: .pi / 6)
+            .transformed(.translation(V3(0.3, 0, 0)) * alongX), Palette.paper))
+        root.addChildNode(part(MeshBuilder.prism(sides: 6, radius: 0.26, height: 2.2, phase: .pi / 6)
+            .transformed(.translation(V3(0.8, 0, 0)) * alongX), Palette.ink))
+        root.addChildNode(part(MeshBuilder.prism(sides: 6, radius: 0.27, height: 0.35, phase: .pi / 6)
+            .transformed(.translation(V3(1.5, 0, 0)) * alongX), Palette.yellow, outline: 0.015))
+        root.addChildNode(part(MeshBuilder.frustum(sides: 6, bottom: 0.26, top: 0.18, height: 0.2, phase: .pi / 6)
+            .transformed(.translation(V3(3.0, 0, 0)) * alongX), Palette.ink, outline: 0.015))
+        return root
+    }
+
     // MARK: Glue bottle — origin at the nozzle tip, body up (+y).
 
     static func glueBottle() -> SCNNode {
@@ -190,47 +209,5 @@ enum Props {
         n.castsShadow = true
         n.name = "scrap"
         return n
-    }
-
-    // MARK: Menu models for projects that are not buildable yet.
-
-    static func cardboardBlock(_ size: V3, center: V3, color: UIColor = Palette.cardboard) -> SCNNode {
-        part(MeshBuilder.box(size, center: center), color, outline: 0.03)
-    }
-
-    static func pistolModel() -> SCNNode {
-        let root = SCNNode()
-        root.addChildNode(cardboardBlock(V3(4.2, 1.0, 0.9), center: V3(0, 2.1, 0)))
-        root.addChildNode(cardboardBlock(V3(3.8, 0.35, 0.8), center: V3(-0.1, 1.42, 0), color: Palette.cardboardDark))
-        let grip = cardboardBlock(V3(1.1, 2.3, 0.85), center: V3(0, -1.15, 0))
-        grip.position = SCNVector3(1.3, 1.45, 0)
-        grip.eulerAngles.z = -0.28
-        root.addChildNode(grip)
-        root.addChildNode(cardboardBlock(V3(0.9, 0.18, 0.5), center: V3(0.05, 0.75, 0), color: Palette.cardboardDark))
-        root.addChildNode(cardboardBlock(V3(0.18, 0.7, 0.5), center: V3(-0.42, 1.0, 0), color: Palette.cardboardDark))
-        return root
-    }
-
-    static func rifleModel() -> SCNNode {
-        let root = SCNNode()
-        root.addChildNode(cardboardBlock(V3(5.0, 1.1, 0.9), center: V3(0, 1.6, 0)))
-        root.addChildNode(cardboardBlock(V3(3.4, 0.4, 0.45), center: V3(-4.2, 1.75, 0)))
-        root.addChildNode(cardboardBlock(V3(2.4, 1.3, 0.8), center: V3(3.6, 1.2, 0)))
-        root.addChildNode(cardboardBlock(V3(0.7, 1.7, 0.6), center: V3(-0.6, 0.35, 0), color: Palette.cardboardDark))
-        let grip = cardboardBlock(V3(0.7, 1.4, 0.7), center: V3(0, -0.7, 0))
-        grip.position = SCNVector3(1.3, 1.1, 0)
-        grip.eulerAngles.z = -0.3
-        root.addChildNode(grip)
-        let scope = part(MeshBuilder.prism(sides: 8, radius: 0.32, height: 2.2).transformed(.translation(V3(-1.3, 2.55, 0)) * alongX),
-                         Palette.cardboardDark, outline: 0.03)
-        root.addChildNode(scope)
-        return root
-    }
-
-    static func crateModel() -> SCNNode {
-        let root = SCNNode()
-        root.addChildNode(cardboardBlock(V3(2.6, 2.2, 2.6), center: V3(0, 1.1, 0)))
-        root.addChildNode(cardboardBlock(V3(2.64, 0.35, 0.5), center: V3(0, 2.05, 0), color: Palette.yellow))
-        return root
     }
 }

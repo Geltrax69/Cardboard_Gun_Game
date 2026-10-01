@@ -1,8 +1,24 @@
 import Foundation
 
-/// Player levels. Crafting a campaign weapon for the first time earns exactly enough XP
-/// to reach the next level, which unlocks the next weapon (campaign weapon `i` unlocks
-/// at level `i + 1`). Repeats and Free Craft builds earn smaller amounts.
+/// The campaign: every project in unlock order. Project `i` unlocks at level `i + 1`,
+/// so the pistol arrives right after the first knife.
+public enum Campaign {
+    public static let order: [String] = [
+        "knife", "pistol", "dagger", "kunai", "rifle", "bowie", "shortSword", "handAxe",
+        "flameDagger", "karambit", "scimitar", "longsword", "katana", "battleAxe",
+    ]
+
+    public static func index(of id: String) -> Int? { order.firstIndex(of: id) }
+
+    public static func level(of id: String) -> Int? { index(of: id).map { Progression.unlockLevel(index: $0) } }
+
+    /// Enough XP to unlock everything.
+    public static var allUnlockedXP: Int { Progression.xpNeeded(forLevel: order.count) }
+}
+
+/// Player levels. Crafting a campaign project for the first time earns exactly enough
+/// XP to reach the next level, which unlocks the next project. Repeats and Free Craft
+/// builds earn smaller amounts.
 public enum Progression {
     /// Total XP needed to reach `level` (level 1 needs 0). Steps grow by 50 per level:
     /// 100, 150, 200, …
@@ -24,7 +40,7 @@ public enum Progression {
         return Float(xp - lo) / Float(max(1, hi - lo))
     }
 
-    /// XP for crafting campaign weapon `index` (0-based).
+    /// XP for crafting campaign project `index` (0-based).
     public static func weaponXP(index: Int, firstTime: Bool) -> Int {
         let base = 100 + 50 * index
         return firstTime ? base : base * 2 / 5
@@ -33,7 +49,7 @@ public enum Progression {
     /// XP for a Free Craft build.
     public static let freeCraftXP = 60
 
-    /// Level at which campaign weapon `index` unlocks.
+    /// Level at which campaign project `index` unlocks.
     public static func unlockLevel(index: Int) -> Int { index + 1 }
 }
 
@@ -51,7 +67,5 @@ public extension WeaponDesign {
     }
 
     /// Level that unlocks this campaign weapon (1 for anything else).
-    var unlockLevel: Int {
-        WeaponDesign.campaign.firstIndex { $0.id == id }.map { Progression.unlockLevel(index: $0) } ?? 1
-    }
+    var unlockLevel: Int { Campaign.level(of: id) ?? 1 }
 }
