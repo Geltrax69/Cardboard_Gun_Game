@@ -2,8 +2,9 @@
 
 A tactile, low-poly 3D **iPad** crafting game written in **Swift** (SwiftUI + SceneKit).
 Cut cardboard along red lines, score and fold along blue dashed lines, glue tabs,
-assemble and sharpen real 3D cardboard weapons. Twelve knives, daggers, swords and
-axes unlock as you level up; the pistol and rifle are on the menu as upcoming blueprints.
+assemble, sharpen and detail real 3D cardboard weapons. Twelve knives, daggers, swords
+and axes plus a pistol and a rifle unlock as you level up, and Free Craft lets you design
+your own.
 
 > CUT → HANDLE → BLADE → FITTINGS → ASSEMBLE → SHARPEN → FINISHED
 
@@ -40,23 +41,27 @@ again if you pause. You can turn hints off in Settings.
 
 ### Weapons and levels
 
-| Level | Weapon | Build |
+| Level | Project | Build |
 |---|---|---|
 | 1 | Knife | Drop-point ridge blade, lanyard hole, guard band |
-| 2 | Dagger | Spear-point ridge blade, bar guard, diamond pommel |
-| 3 | Kunai | Leaf blade, slim handle, three grip bands |
-| 4 | Bowie Knife | Laminated clip-point blade, guard, knob pommel |
-| 5 | Short Sword | Leaf blade with a fuller, flared guard |
-| 6 | Hand Axe | Long shaft, single-bit axe head |
-| 7 | Flame Dagger | Wavy flame blade, spiked guard, spike pommel |
-| 8 | Karambit | Hooked laminated blade with a saw back |
-| 9 | Scimitar | Strongly curved laminated blade |
-| 10 | Longsword | 11.5-unit ridge blade, fuller, long grip |
-| 11 | Katana | Curved tanto-tip blade, disc guard, four wraps |
-| 12 | Battle Axe | Double-bit head on a long shaft |
+| 2 | **Pistol** | Slide with muzzle, raked grip, trigger guard with trigger, front and rear sights |
+| 3 | Dagger | Spear-point ridge blade, bar guard, diamond pommel |
+| 4 | Kunai | Leaf blade, slim handle, three grip bands |
+| 5 | **Rifle** | Receiver, barrel through a square slot, stock, grip, magazine, scope, sight |
+| 6 | Bowie Knife | Laminated clip-point blade, guard, knob pommel |
+| 7 | Short Sword | Leaf blade with a fuller, flared guard |
+| 8 | Hand Axe | Long shaft, single-bit axe head |
+| 9 | Flame Dagger | Wavy flame blade, spiked guard, spike pommel |
+| 10 | Karambit | Hooked laminated blade with a saw back |
+| 11 | Scimitar | Strongly curved laminated blade |
+| 12 | Longsword | 11.5-unit ridge blade, fuller, long grip |
+| 13 | Katana | Curved tanto-tip blade, disc guard, four wraps |
+| 14 | Battle Axe | Double-bit head on a long shaft |
 
-Crafting a weapon for the first time earns exactly the XP needed for the next level
-(`Core/Progression.swift`), which unlocks the next weapon. Crafting again earns 40% XP.
+The order lives in `Campaign.order` (`Core/Progression.swift`). Crafting a project for
+the first time earns exactly the XP needed for the next level, which unlocks the next
+one. Crafting again earns 40% XP. **Settings → Unlock all projects** jumps straight to
+the top level for testing.
 The finish card shows **LEVEL UP!** and what it unlocked; new weapons wear a **NEW**
 badge on the menu.
 
@@ -74,7 +79,7 @@ zoom, and tap ↺ to reset the view:
 - **Handle / shaft** length, grip bands, lanyard hole
 
 Every part unlocks at the level of the first campaign weapon that uses it (flame tips at
-level 7 with the Flame Dagger, axes at level 6, …; `Core/FreeCraft.swift`), so the
+level 9 with the Flame Dagger, axes at level 8, …; `Core/FreeCraft.swift`), so the
 designer grows as you level up. **Surprise me** rolls a random design from your unlocked
 parts. **Craft it!** builds it with the normal six-stage session for 60 XP, and the last
 design is remembered.
@@ -96,6 +101,18 @@ the HUD shows 5 or 6 steps.
 The **How to build the Knife** guide (menu → *How to build*, the **?** button while
 crafting, or Settings) shows all eight stages rendered from the real 3D pieces.
 
+### The pistol and rifle, step by step
+
+Guns are boxes and fins (`Core/GunBlueprint.swift`, built by `Game/GunSession.swift`):
+
+| Stage | What happens |
+|---|---|
+| Cut | Cut every box net and fin out, punch the muzzle, the finger hole round the trigger and the rifle's barrel slot. |
+| Body | Fold the slide / receiver box crease by crease, with a front cap holding the muzzle (pistol) or the barrel slot (rifle). Glue the tab, close the lid. |
+| Parts | Every other box (grip, barrel, stock, magazine, scope) is scored for you and folds up with **one drag**; then glue and close. Fins (trigger guard, sights) get their tab scored and glued. |
+| Assemble | The body lifts up. Push the barrel through the slot, fit the stock, hang the grip and magazine underneath, and drop on the trigger guard and sights: their glued tabs fold over and stick. |
+| Details | Draw the ejection port, slide serrations, magazine ridges and grip texture with a **marker** along yellow dotted guides. |
+
 ## Project layout
 
 ```
@@ -107,13 +124,16 @@ CardboardLab/
                 FoldRig (fold kinematics) · MeshBuilder (flat-shaded meshes)
                 PathTracer (finger → tool along a path) · CameraMath · Tweener
                 WeaponDesign (parameters) · BladeShapes (blade outlines)
-                WeaponBlueprint (design → pieces, folds, assembly, glue & bevels) · Stock
+                WeaponBlueprint (design → pieces, folds, assembly, glue & bevels)
+                BoxNet (box and fin nets) · GunBlueprint · Progression (campaign, XP)
+                FreeCraft (parts and unlock levels) · Stock
   Scene/      SceneKit building blocks: palette, materials, procedural textures,
               low-poly props, workspace, menu stacks, PieceNode, TemplateSheet,
               cut/score/glue visuals, particles, icon & guide renderer
   Engine/     GameEngine (loop, input, screens), CameraRig, HUD model, SoundBoard,
               guide overlay (arrows, dotted guides, ghost finger)
-  Game/       Crafting sessions and interactions: CraftSession, WeaponSession,
+  Game/       Crafting sessions and interactions: CraftSession, BuildSession (shared
+              moves), WeaponSession, GunSession, FreeCraftModel,
               TraceInteraction (cut/score/glue), FoldInteraction, PlaceInteraction,
               GhostHint, PlayerProfile, Catalog
   UI/         SwiftUI: menu, crafting HUD, guide, components
@@ -179,10 +199,11 @@ pieces and `WeaponSession` builds it. `Tools/run-core-tests.sh` checks every cam
 weapon plus hundreds of random designs and writes `weapon_<id>.json` / `sheet_<id>.json`
 previews.
 
-Something completely different (for example the pistol) gets its own blueprint in
-`Core/` and its own `CraftSession` subclass in `Game/`, built from the ready-made
-interactions: `TraceInteraction.cut/score/glue/sand/carve`, `FoldInteraction`,
-`PlaceInteraction`.
+Something completely different gets its own blueprint in `Core/` (use `BoxNet` for
+boxes and fins, like `GunBlueprint`) and its own `BuildSession` subclass in `Game/`,
+built from the shared moves (`cutPieces`, `buildBox`, `liftBody`, `mount`,
+`celebrate`) and the interactions `TraceInteraction.cut/score/glue/sand/carve/draw`,
+`FoldInteraction` and `PlaceInteraction`.
 
 ## Style
 
