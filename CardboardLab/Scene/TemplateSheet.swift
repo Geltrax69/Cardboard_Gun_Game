@@ -90,6 +90,8 @@ final class TemplateSheet {
         let rest = pencil.pose
         // Body leans up and toward the bottom-right, like a hand holding it.
         let tilt = Quat.euler(yaw: -0.7, pitch: 0, roll: 0.75)
+        // Busy sheets (swords with fittings and grip bands) are traced a little faster.
+        let drawTime = template.pieces.count > 4 ? 0.5 : 0.75
         for def in template.pieces {
             guard let cut = outlineCuts[def.id] else { continue }
             let start = cut.path.point(at: 0)
@@ -98,7 +100,7 @@ final class TemplateSheet {
                 let p = mix3(hop.pos, start + V3(0, 0.05, 0), k) + V3(0, sin(k * .pi) * 1.2, 0)
                 pencil.setPose(Pose(rot: hop.rot.slerp(tilt, k), pos: p))
             }
-            try await tweener.tween(0.75, ease: .inOutSine) { k in
+            try await tweener.tween(drawTime, ease: .inOutSine) { k in
                 cut.drawIn(k)
                 pencil.setPose(Pose(rot: tilt, pos: cut.path.point(at: cut.path.length * k) + V3(0, 0.05, 0)))
             }
