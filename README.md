@@ -66,6 +66,29 @@ the top level for testing.
 The finish card shows **LEVEL UP!** and what it unlocked; new weapons wear a **NEW**
 badge on the menu.
 
+### Cardboard
+
+Ten boards, three to a shelf page on the menu (flip pages with ‹ ›). Buy them with the
+CRAFT you earn; Free Mode's sheet picker offers every one.
+
+| Board | Surface | Thickness | Price |
+|---|---|---|---|
+| Plain Cardboard | Faint mottling and short fibres | 0.14 | free |
+| Corrugated Cardboard | Flute ribs showing through the liner | 0.20 | 150 |
+| Colored Cardboard | Plain liner, red-brown | 0.14 | 300 |
+| Kraft Board | Long brown streaks and fibres | 0.17 | 450 |
+| Recycled Board | Grey pulp with dark and light flecks | 0.14 | 600 |
+| White Coated | Bright clay coat, brown kraft inside | 0.14 | 750 |
+| Black Board | Smooth black coat | 0.14 | 900 |
+| Rough Board | Scratches, dents and crushed patches | 0.20 | 1100 |
+| Old Shipping Box | Scuffs, packing tape, water stains, a faded "this way up" stamp | 0.20 | 1300 |
+| Double Wall | Ribbed, with two rows of flutes on every cut edge | 0.22 | 1600 |
+
+Surfaces are drawn procedurally (`Core/SurfaceTexture.swift`): a tileable height field
+per surface gives a white detail map — tinted by the board colour, or by paint, so
+painted faces keep their texture — and a normal map, so the roughness catches the
+light. Every weapon and gun blueprint is validated against every board thickness.
+
 ### Free Mode: make anything
 
 **Free Mode** (top of the Weapons list) is an open workbench with unlimited cardboard.
@@ -132,7 +155,8 @@ CardboardLab/
                 WeaponDesign (parameters) · BladeShapes (blade outlines)
                 WeaponBlueprint (design → pieces, folds, assembly, glue & bevels)
                 BoxNet (box and fin nets) · GunBlueprint · Progression (campaign, XP)
-                Workshop (free mode: cutting, creasing, colours, glue) · Stock
+                Workshop (free mode: cutting, creasing, colours, glue) · Stock (boards)
+                SurfaceTexture (tileable cardboard surfaces and their normal maps)
   Scene/      SceneKit building blocks: palette, materials, procedural textures,
               low-poly props, workspace, menu stacks, PieceNode, TemplateSheet,
               cut/score/glue visuals, particles, icon & guide renderer
@@ -142,7 +166,7 @@ CardboardLab/
               moves), WeaponSession, GunSession, WorkshopSession, WorkshopModel,
               TraceInteraction (cut/score/glue), FoldInteraction, PlaceInteraction,
               GhostHint, PlayerProfile, Catalog
-  UI/         SwiftUI: menu, crafting HUD, guide, components
+  UI/         SwiftUI: menu, crafting HUD, workshop, explore controls, guide, components
 Tools/        Core tests, preview renderer, API stubs for type-checking, icon generator
 ```
 

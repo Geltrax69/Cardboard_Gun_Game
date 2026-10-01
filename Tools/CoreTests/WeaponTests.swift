@@ -1,7 +1,7 @@
 import Foundation
 
 // Checks for the parametric weapon generator across every campaign design and a batch
-// of random Free Craft designs, on both board thicknesses.
+// of random Free Craft designs, on every board thickness.
 
 func runWeaponTests(outDir: String) {
     var designs = WeaponDesign.campaign
@@ -38,7 +38,7 @@ func runWeaponTests(outDir: String) {
 
     var worstSheet = V2(0, 0)
     for (index, design) in designs.enumerated() {
-        for t: Float in [0.14, 0.2] {
+        for t in CardboardStock.thicknesses {
             let bp = WeaponBlueprint(design: design, thickness: t)
             let tag = "\(design.id)@\(t)"
             // Pieces: clean outlines that match their panels.

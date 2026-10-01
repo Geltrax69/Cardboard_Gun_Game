@@ -9,8 +9,16 @@ public enum CGLineJoin { case miter, round, bevel }
 public enum CGLineCap { case butt, round, square }
 public enum CGBlendMode { case normal, multiply }
 
+open class CGImage { public init() {} }
+open class CGColorSpace { public init() {} }
+public func CGColorSpaceCreateDeviceRGB() -> CGColorSpace { CGColorSpace() }
+public enum CGImageAlphaInfo: UInt32 { case none = 0, premultipliedLast, premultipliedFirst, last, first, noneSkipLast, noneSkipFirst, alphaOnly }
+
 open class CGContext {
     public init() {}
+    public init?(data: UnsafeMutableRawPointer?, width: Int, height: Int, bitsPerComponent: Int, bytesPerRow: Int,
+                 space: CGColorSpace, bitmapInfo: UInt32) {}
+    public func makeImage() -> CGImage? { nil }
     public func setFillColor(_ c: CGColor) {}
     public func setStrokeColor(_ c: CGColor) {}
     public func setLineWidth(_ w: CGFloat) {}

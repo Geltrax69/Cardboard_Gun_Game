@@ -14,6 +14,7 @@ open class UIColor: NSObject, @unchecked Sendable {
 
 open class UIImage: NSObject, @unchecked Sendable {
     public override init() {}
+    public init(cgImage: CGImage) {}
     open var size: CGSize { .zero }
     open var cgImage: AnyObject? { nil }
 }

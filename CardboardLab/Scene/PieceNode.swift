@@ -143,7 +143,7 @@ final class PieceNode {
     func highlight(_ panel: String, color: UIColor?) {
         guard let node = panelNodes[panel] else { return }
         if let color {
-            node.geometry?.materials = [Mat.lambert(color), Mat.lambert(color), materials.side]
+            node.geometry?.materials = [materials.top(color), materials.under(color), materials.side]
         } else {
             node.geometry?.materials = baseMaterials(panel)
         }
@@ -157,7 +157,7 @@ final class PieceNode {
 
     private func baseMaterials(_ panel: String) -> [SCNMaterial] {
         let p = paint[panel]
-        return [p?.top.map { Mat.lambert($0) } ?? materials.top, p?.under.map { Mat.lambert($0) } ?? materials.under, materials.side]
+        return [materials.top(p?.top ?? nil), materials.under(p?.under ?? nil), materials.side]
     }
 
     /// Translucent copy of the piece in its current fold state (target outlines).

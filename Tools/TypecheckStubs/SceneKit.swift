@@ -54,6 +54,8 @@ open class SCNMaterial: NSObject {
     public let emission = SCNMaterialProperty()
     public let ambient = SCNMaterialProperty()
     public let transparent = SCNMaterialProperty()
+    public let multiply = SCNMaterialProperty()
+    public let normal = SCNMaterialProperty()
     open var transparency: CGFloat = 1
     open var transparencyMode: SCNTransparencyMode = .default
     open var shininess: CGFloat = 1

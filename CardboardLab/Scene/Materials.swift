@@ -28,6 +28,28 @@ enum Mat {
         return m
     }
 
+    /// A cardboard face: the surface texture tinted with a colour (board or paint), its
+    /// bumps lit by the lamps.
+    static func cardboardFace(_ surface: CardboardSurface, _ color: UIColor) -> SCNMaterial {
+        let tex = Textures.surface(surface)
+        let m = SCNMaterial()
+        m.lightingModel = .lambert
+        m.diffuse.contents = tex.detail
+        m.multiply.contents = color
+        m.normal.contents = tex.normal
+        m.normal.intensity = 0.85
+        for p in [m.diffuse, m.normal] {
+            p.wrapS = .repeat
+            p.wrapT = .repeat
+            p.mipFilter = .linear
+            p.minificationFilter = .linear
+            p.magnificationFilter = .linear
+            p.maxAnisotropy = 8
+        }
+        m.locksAmbientWithDiffuse = true
+        return m
+    }
+
     static func unlit(_ color: UIColor, opacity: CGFloat = 1, depthWrite: Bool = true) -> SCNMaterial {
         let m = SCNMaterial()
         m.lightingModel = .constant
@@ -60,8 +82,10 @@ enum Mat {
     static let ink: SCNMaterial = unlit(Palette.ink)
 }
 
-/// Cardboard materials for one stock: [top, underside, sides, ink].
+/// Cardboard materials for one stock: [top, underside, sides, ink]. Faces carry the
+/// stock's surface texture; paint and highlights keep it.
 struct CardboardMaterials {
+    let stock: CardboardStock
     let top: SCNMaterial
     let under: SCNMaterial
     let side: SCNMaterial
@@ -70,14 +94,25 @@ struct CardboardMaterials {
     var array: [SCNMaterial] { [top, under, side, ink] }
 
     init(stock: CardboardStock) {
-        top = Mat.lambert(UIColor(hex: stock.top))
-        under = Mat.lambert(UIColor(hex: stock.under))
+        self.stock = stock
+        top = Mat.cardboardFace(stock.surface, UIColor(hex: stock.top))
+        under = Mat.cardboardFace(stock.underSurface, UIColor(hex: stock.under))
         side = Mat.textured(Textures.corrugation(stock), repeatS: true)
         ink = Mat.ink
     }
 
+    /// The printed face in another colour (paint, highlight), same texture.
+    func top(_ color: UIColor?) -> SCNMaterial {
+        color.map { Mat.cardboardFace(stock.surface, $0) } ?? top
+    }
+
+    /// The inside face in another colour.
+    func under(_ color: UIColor?) -> SCNMaterial {
+        color.map { Mat.cardboardFace(stock.underSurface, $0) } ?? under
+    }
+
     /// Same cardboard with a tint (used to highlight a panel).
     func tinted(_ color: UIColor) -> [SCNMaterial] {
-        [Mat.lambert(color), Mat.lambert(color), side, ink]
+        [top(color), under(color), side, ink]
     }
 }

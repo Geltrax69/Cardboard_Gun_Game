@@ -1,10 +1,10 @@
 import Foundation
 
-// Checks for the pistol and rifle blueprints on both board thicknesses.
+// Checks for the pistol and rifle blueprints on every board thickness.
 
 func runGunTests(outDir: String) {
     for kind in GunKind.allCases {
-        for t: Float in [0.14, 0.2] {
+        for t in CardboardStock.thicknesses {
             let bp = GunBlueprint(kind: kind, thickness: t)
             let tag = "\(kind.rawValue)@\(t)"
             // Pieces: clean outlines, holes inside their panels.

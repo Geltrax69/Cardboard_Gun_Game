@@ -331,6 +331,7 @@ do {
 runWeaponTests(outDir: CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : ".")
 runGunTests(outDir: CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : ".")
 runWorkshopTests()
+runSurfaceTests()
 
 if failures == 0 {
     print("All core tests passed")

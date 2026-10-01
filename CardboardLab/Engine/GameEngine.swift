@@ -57,6 +57,8 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
     @Published private(set) var menuAnchors: [String: MenuAnchor] = [:]
     @Published private(set) var toasts: [Toast] = []
     @Published var selectedTool: String = "knife"
+    /// Menu shelf page (three boards each).
+    @Published private(set) var stockPage = 0
     @Published private(set) var transitioning = false
     /// "How to build" guide overlay.
     @Published private(set) var guideVisible = false
@@ -126,6 +128,7 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
         installCameraGestures()
 
         menu.select(profile.stock.id)
+        stockPage = menu.page
         rig.set(menuShot())
         let profile = self.profile
         sound.isEnabled = { profile.soundOn }
@@ -407,6 +410,14 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
         if changed || a.count != menuAnchors.count { menuAnchors = a }
     }
 
+    /// Slides the menu shelf to another page of boards.
+    func showStockPage(_ page: Int) {
+        menu.show(page: page)
+        guard menu.page != stockPage else { return }
+        stockPage = menu.page
+        sound.play(.whoosh, volume: 0.4)
+    }
+
     enum StockChoice { case selected, bought, tooExpensive }
 
     @discardableResult
@@ -417,6 +428,7 @@ final class GameEngine: NSObject, ObservableObject, PointerSink, UIGestureRecogn
             return .tooExpensive
         }
         menu.select(stock.id)
+        stockPage = menu.page
         sound.play(.tap)
         icons.renderAll(stock: stock)
         if !wasUnlocked {

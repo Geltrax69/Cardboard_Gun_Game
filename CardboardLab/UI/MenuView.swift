@@ -84,6 +84,10 @@ struct MenuView: View {
 
     @ViewBuilder
     private func stockLabels(scale s: CGFloat) -> some View {
+        if MenuScene.pageCount > 1, let a = engine.menuAnchors[MenuScene.pagerKey] {
+            shelfPager(s)
+                .position(x: a.label.x, y: a.label.y)
+        }
         ForEach(CardboardStock.all) { stock in
             if let a = engine.menuAnchors[stock.id] {
                 let unlocked = profile.isUnlocked(stock)
@@ -131,6 +135,45 @@ struct MenuView: View {
                 }
             }
         }
+    }
+}
+
+extension MenuView {
+    /// ‹ Boards 2 / 4 › — flips the shelf to more cardboard.
+    func shelfPager(_ s: CGFloat) -> some View {
+        let page = engine.stockPage, count = MenuScene.pageCount
+        return HStack(spacing: 10 * s) {
+            pagerButton("chevron.left", enabled: page > 0, s) { engine.showStockPage(page - 1) }
+            VStack(spacing: 4 * s) {
+                Text("Cardboard \(page + 1) / \(count)")
+                    .font(LabFont.heavy(15 * s))
+                    .foregroundStyle(Color.labPaper)
+                HStack(spacing: 5 * s) {
+                    ForEach(0..<count, id: \.self) { i in
+                        Circle()
+                            .fill(i == page ? Color.labYellow : Color.labPaper.opacity(0.35))
+                            .frame(width: 7 * s, height: 7 * s)
+                    }
+                }
+            }
+            pagerButton("chevron.right", enabled: page < count - 1, s) { engine.showStockPage(page + 1) }
+        }
+        .padding(.horizontal, 8 * s)
+        .padding(.vertical, 6 * s)
+        .background(Capsule().fill(Color.labInk.opacity(0.85)))
+        .overlay(Capsule().stroke(Color.labMat, lineWidth: 2))
+    }
+
+    private func pagerButton(_ icon: String, enabled: Bool, _ s: CGFloat, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 16 * s, weight: .black))
+                .foregroundStyle(enabled ? Color.labInk : Color.labPaper.opacity(0.4))
+                .frame(width: 38 * s, height: 38 * s)
+                .background(Circle().fill(enabled ? Color.labYellow : Color.labTable))
+        }
+        .buttonStyle(PressableStyle())
+        .disabled(!enabled)
     }
 }
 

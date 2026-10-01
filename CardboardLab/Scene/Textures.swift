@@ -76,8 +76,8 @@ enum Textures {
 
     private static var corrugationCache: [String: UIImage] = [:]
 
-    /// Cardboard edge: dark board with a zig-zag flute and ink liners top and bottom.
-    /// Repeats horizontally once per flute period; symmetric vertically.
+    /// Cardboard edge: dark board with a zig-zag flute and ink liners top and bottom
+    /// (two rows of flutes for double wall). Repeats horizontally once per flute period.
     static func corrugation(_ stock: CardboardStock) -> UIImage {
         if let img = corrugationCache[stock.id] { return img }
         let size = CGSize(width: 64, height: 32)
@@ -85,20 +85,51 @@ enum Textures {
             g.setFillColor(UIColor(hex: stock.side).cgColor)
             g.fill(CGRect(origin: .zero, size: size))
             g.setStrokeColor(UIColor(hex: stock.flute).cgColor)
-            g.setLineWidth(4)
             g.setLineJoin(.miter)
-            g.move(to: CGPoint(x: 0, y: 26))
-            g.addLine(to: CGPoint(x: 16, y: 6))
-            g.addLine(to: CGPoint(x: 32, y: 26))
-            g.addLine(to: CGPoint(x: 48, y: 6))
-            g.addLine(to: CGPoint(x: 64, y: 26))
+            let rows: [(low: CGFloat, high: CGFloat)] = stock.doubleWall ? [(15, 5), (27, 17)] : [(26, 6)]
+            g.setLineWidth(stock.doubleWall ? 3 : 4)
+            for r in rows {
+                g.move(to: CGPoint(x: 0, y: r.low))
+                g.addLine(to: CGPoint(x: 16, y: r.high))
+                g.addLine(to: CGPoint(x: 32, y: r.low))
+                g.addLine(to: CGPoint(x: 48, y: r.high))
+                g.addLine(to: CGPoint(x: 64, y: r.low))
+            }
             g.strokePath()
             g.setFillColor(Palette.ink.cgColor)
             g.fill(CGRect(x: 0, y: 0, width: 64, height: 3))
             g.fill(CGRect(x: 0, y: 29, width: 64, height: 3))
+            if stock.doubleWall {
+                // The liner between the two walls.
+                g.setFillColor(UIColor(hex: stock.flute).cgColor)
+                g.fill(CGRect(x: 0, y: 15, width: 64, height: 2))
+            }
         }
         corrugationCache[stock.id] = img
         return img
+    }
+
+    private static var surfaceCache: [CardboardSurface: (detail: UIImage, normal: UIImage)] = [:]
+
+    /// A board's face texture: a white detail map (fibres, flecks, scuffs) to tint with the
+    /// board colour or paint, and a normal map for the bumps. Both tile every 8 units.
+    static func surface(_ s: CardboardSurface) -> (detail: UIImage, normal: UIImage) {
+        if let hit = surfaceCache[s] { return hit }
+        let maps = SurfaceTexture.maps(s)
+        let out = (image(rgba: maps.detail, size: SurfaceTexture.size), image(rgba: maps.normal, size: SurfaceTexture.size))
+        surfaceCache[s] = out
+        return out
+    }
+
+    /// An opaque image from raw RGBA bytes.
+    private static func image(rgba: [UInt8], size: Int) -> UIImage {
+        var bytes = rgba
+        let cg: CGImage? = bytes.withUnsafeMutableBytes { buf in
+            guard let ctx = CGContext(data: buf.baseAddress, width: size, height: size, bitsPerComponent: 8, bytesPerRow: size * 4,
+                                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+            return ctx.makeImage()
+        }
+        return cg.map { UIImage(cgImage: $0) } ?? UIImage()
     }
 
     /// Yellow ruler face with tick marks and numbers (image top = far edge).

@@ -8,7 +8,8 @@ struct MenuAnchor: Equatable {
     var badge: CGPoint
 }
 
-/// The three cardboard stacks on the mat that the player picks from on the menu.
+/// The cardboard stacks on the mat that the player picks from on the menu, three to a
+/// page; the shelf slides sideways between pages.
 @MainActor
 final class MenuScene {
     let root = SCNNode()
@@ -19,12 +20,30 @@ final class MenuScene {
     private let frame: SCNNode
     private(set) var selected: String = CardboardStock.plain.id
     private var lift: [String: Float] = [:]
+    /// Shelf page shown (three stacks each) and how far the shelf has slid toward it.
+    private(set) var page = 0
+    private var scroll: Float = 0
 
-    static let positions: [String: V3] = [
-        CardboardStock.plain.id: V3(-7.0, 0, -0.6),
-        CardboardStock.corrugated.id: V3(0, 0, -0.6),
-        CardboardStock.colored.id: V3(7.0, 0, -0.6),
-    ]
+    static let perPage = 3
+    static let pagerKey = "pager"
+    static let spacing: Float = 7
+    /// Pages sit this far apart, so the neighbours are well off screen.
+    static let pageWidth: Float = 24
+    static var pageCount: Int { (CardboardStock.all.count + perPage - 1) / perPage }
+
+    static func page(of id: String) -> Int {
+        (CardboardStock.all.firstIndex { $0.id == id } ?? 0) / perPage
+    }
+
+    /// Where a stack rests with the shelf scrolled to `scroll` pages.
+    private static func position(_ id: String, scroll: Float) -> V3 {
+        let i = CardboardStock.all.firstIndex { $0.id == id } ?? 0
+        let page = i / perPage, slot = i % perPage
+        let x = Float(page) * pageWidth + Float(slot - 1) * spacing - scroll * pageWidth
+        return V3(x, 0, -0.6)
+    }
+
+    private func position(_ id: String) -> V3 { MenuScene.position(id, scroll: scroll) }
 
     init() {
         root.name = "menu"
@@ -45,7 +64,7 @@ final class MenuScene {
                 stack.addChildNode(sheet)
                 if i == sheetsPerStack - 1 { topSheets[stock.id] = sheet }
             }
-            stack.setPosition(MenuScene.positions[stock.id] ?? V3(0, 0, 0))
+            stack.setPosition(MenuScene.position(stock.id, scroll: 0))
             root.addChildNode(stack)
             stacks[stock.id] = stack
             lift[stock.id] = 0
@@ -59,29 +78,42 @@ final class MenuScene {
         frame = SceneBridge.node(ring, [Mat.unlit(Palette.yellow)], name: "selection")
         frame.castsShadow = false
         root.addChildNode(frame)
+        page = MenuScene.page(of: selected)
+        scroll = Float(page)
         place(frame: selected)
     }
 
     private func place(frame id: String) {
-        frame.setPosition(MenuScene.positions[id] ?? V3(0, 0, 0))
+        frame.setPosition(position(id))
     }
 
+    /// Selects a stack (and turns the shelf to its page).
     func select(_ id: String) {
         selected = id
+        show(page: MenuScene.page(of: id))
         place(frame: id)
     }
 
-    /// Selected stack bobs gently; the frame pulses.
+    func show(page p: Int) {
+        page = max(0, min(MenuScene.pageCount - 1, p))
+    }
+
+    /// The shelf slides toward its page; the selected stack bobs gently; the frame pulses.
     func update(time: Double) {
+        scroll += (Float(page) - scroll) * 0.16
+        if abs(Float(page) - scroll) < 1e-3 { scroll = Float(page) }
         for (id, stack) in stacks {
             let target: Float = id == selected ? 0.35 + 0.08 * Float(sin(time * 2.4)) : 0
             let cur = lift[id] ?? 0
             let next = cur + (target - cur) * 0.18
             lift[id] = next
-            var p = MenuScene.positions[id] ?? V3(0, 0, 0)
+            var p = position(id)
             p.y = next
             stack.setPosition(p)
+            stack.isHidden = abs(p.x) > MenuScene.pageWidth * 0.9
         }
+        place(frame: selected)
+        frame.isHidden = MenuScene.page(of: selected) != page && abs(position(selected).x) > MenuScene.pageWidth * 0.9
         frame.opacity = CGFloat(0.75 + 0.25 * sin(time * 3.2))
     }
 
@@ -97,7 +129,14 @@ final class MenuScene {
     func anchors(camera: OrbitCamera) -> [String: MenuAnchor] {
         var out: [String: MenuAnchor] = [:]
         let s = stackSize
-        for (id, base) in MenuScene.positions {
+        // The page switcher sits just behind the middle stack.
+        let pager = camera.screen(V3(0, 0, -0.6 - s.y / 2 - 1.1))
+        out[MenuScene.pagerKey] = MenuAnchor(rect: .zero, label: CGPoint(x: CGFloat(pager.x), y: CGFloat(pager.y)), badge: .zero)
+        // Only the stacks on the page being shown (once the shelf has settled).
+        guard abs(Float(page) - scroll) < 0.05 else { return out }
+        for (i, stock) in CardboardStock.all.enumerated() where i / MenuScene.perPage == page {
+            let id = stock.id
+            let base = position(id)
             let h: Float = 0.9
             var pts: [V2] = []
             for dx in [-s.x / 2, s.x / 2] {
